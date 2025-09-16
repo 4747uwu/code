@@ -43,7 +43,7 @@ jobs:
             echo "✅ Docker Compose already present"
           fi
 
-          # Create and navigate to project directory
+          
           mkdir -p /opt/figgy-project
           cd /opt/figgy-project
           
@@ -57,29 +57,29 @@ jobs:
           MONGODB_CONNECTION_STRING=${{ secrets.MONGODB_CONNECTION_STRING }}
           EOF
           
-          # ✅ List files to verify structure
-          echo "=== Repository Structure ==="
-          ls -la
-          echo "=== Backend Directory ==="
-          ls -la backend/
+          # ✅ Verify docker-compose file exists and show its content
+          echo "=== Checking docker-compose.prod.yml ==="
+          ls -la docker-compose.prod.yml
+          echo "=== Docker Compose File Content ==="
+          cat docker-compose.prod.yml
           
-          # ✅ Stop existing containers
+          # ✅ Stop existing containers (specify file explicitly)
           echo "=== Stopping existing containers ==="
-          docker-compose down 2>/dev/null || echo "No existing containers to stop"
+          docker-compose -f docker-compose.prod.yml down 2>/dev/null || echo "No existing containers to stop"
           
-          # Build the backend
+          # Build the backend (specify file explicitly)
           echo "=== Building Figgy Backend ==="
-          if ! docker-compose build --no-cache figgy-backend; then
+          if ! docker-compose -f docker-compose.prod.yml build --no-cache figgy-backend; then
             echo "❌ Build failed! Checking logs..."
-            docker-compose logs figgy-backend
+            docker-compose -f docker-compose.prod.yml logs figgy-backend 2>/dev/null || echo "No logs available"
             exit 1
           fi
           
-          # Start the backend
+          # Start the backend (specify file explicitly)
           echo "=== Starting Figgy Backend ==="
-          if ! docker-compose up -d figgy-backend; then
+          if ! docker-compose -f docker-compose.prod.yml up -d figgy-backend; then
             echo "❌ Container startup failed! Checking logs..."
-            docker-compose logs figgy-backend
+            docker-compose -f docker-compose.prod.yml logs figgy-backend
             exit 1
           fi
           
@@ -90,13 +90,13 @@ jobs:
           echo "=== Running Containers ==="
           docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
           
-          # Check container status
+          # Check container status (specify file explicitly)
           echo "=== Figgy Backend Status ==="
-          docker-compose ps figgy-backend
+          docker-compose -f docker-compose.prod.yml ps figgy-backend
           
-          # Check logs for any errors
+          # Check logs for any errors (specify file explicitly)
           echo "=== Recent Container Logs ==="
-          docker-compose logs --tail=50 figgy-backend
+          docker-compose -f docker-compose.prod.yml logs --tail=50 figgy-backend
           
           # Check if port 5000 is listening
           echo "=== Port Status ==="
