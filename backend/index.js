@@ -91,10 +91,19 @@ global.updateSettingFile = (settingData) => {
     console.error("❌ Error updating settings:", error);
   }
 };
-
+app.get("/api/health", (req, res) => {
+  res.status(200).json({ 
+    status: "OK", 
+    message: "Figgy Backend is running",
+    timestamp: new Date().toISOString(),
+    port: process.env.PORT || 5000
+  });
+});
 //API
 const route = require("./routes/route");
 app.use("/api", route);
+
+
 
 // Socket.io connection handling
 require("./socket");
