@@ -20,42 +20,36 @@ const fs = require("fs");
 //dotenv
 require("dotenv").config({ path: ".env" });
 
-//Firebase Admin SDK - Fixed initialization
+//Firebase Admin SDK - Fixed initialization with hardcoded config
 const admin = require("firebase-admin");
 
-// Initialize Firebase Admin with proper service account
+// Initialize Firebase Admin with hardcoded service account
 if (!admin.apps.length) {
   try {
     const serviceAccount = {
-      type: process.env.FIREBASE_TYPE || "service_account",
-      project_id: process.env.FIREBASE_PROJECT_ID,
-      private_key_id: process.env.FIREBASE_PRIVATE_KEY_ID,
-      private_key: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : null,
-      client_email: process.env.FIREBASE_CLIENT_EMAIL,
-      client_id: process.env.FIREBASE_CLIENT_ID,
-      auth_uri: process.env.FIREBASE_AUTH_URI || "https://accounts.google.com/o/oauth2/auth",
-      token_uri: process.env.FIREBASE_TOKEN_URI || "https://oauth2.googleapis.com/token",
-      auth_provider_x509_cert_url: process.env.FIREBASE_AUTH_PROVIDER_X509_CERT_URL || "https://www.googleapis.com/oauth2/v1/certs",
-      client_x509_cert_url: process.env.FIREBASE_CLIENT_X509_CERT_URL,
+      type: "service_account",
+      project_id: "datingapp-146b1",
+      private_key_id: "d64a0beb9ab9b816ee0cea02e70c715929f57864",
+      private_key: "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDSFnEchobDrhSP\n2DteSlS2YvtQYidXldr6DjRewPm95gBrrDNbTQ8qWKMNNO16NN/F6T9SH/1+dAVy\nOSgSmQBO4hkN/j0dT6bWwTO4kabo52NjQRAZLgBA9xZIATij7f3XjPCJeJJwTWMJ\nSAfQ9Fzll0dlxm3rG4xf3macLhGpLd+A/z6rvx55HZJanfUWykFeBKbVg9Y5/JiE\ngRu+TwvkurXNRdJW+vquXKDNHN4jtOJRYNhfXQ0JlQQQ/1oFBhmQt29KkOxLSwhR\nTyKvlHBbAOAqfpIaTtGrQaYIC2SwcisxFob9iRQBtTRVSwV9BHhH12mJHm2LaoEV\nNsR2G4RnAgMBAAECggEAPsIgeQaA1Iy4rL3KAmFPDArmiz0/Bm2INCGxKEsab814\n+7E9yDztVleTIbtZY6PO4ybJ2SUgSzmqdNQ5MdEN5AKrvF/h7tMgAlBFvJGaHEIf\nEQPbJMJ2pfGJ8OmYe3P5W/5IzrA7gpvDhX7Egvm0lItL803DATRCC1N7MJWchf5Z\nEYB0jtzt2zBnR/ZI8XTeLoTyOHJBUKl2ucwRrEiP3buj2G6Nrbv/lRJOf0i9NQTn\nitDzFnD3q9wJmjLZThWoxjMMUCH8MPwVtwf2KREqdQ/A5IafbZIfpSGaNX7OAJ8w\nqhmHaeXxVqZZsmVxQkdHP0VjWGGYAiUEAU6MARFYoQKBgQDqDrOgk5KmtpHcAE47\nXWrRf7/5LOLjviWVMb5QyTvXmdOYtmD8ZLd3TIKpeDQwgmvprNXSayvVbkZt3uk5\n+dmgaqSltcQpuEvL8mPFTBXxOPgBKPivDfjYff6ehiT82xQV0U12hcBtW3p51rme\nOIcuWAovCl6JeEJpdZ5/tCAhBwKBgQDlyHlYKJdRQWNswUQsgrx4+91adL4VjHt3\nvNMvK0KGdAi0mKaUDSpvda0sL0QPxuC1BB+4jpvaOZk+97BH5qBI5jYc2toUm73M\nuxxv+eSJZRLhrtQkaev5fL/Apw5TzuRrH9O2+aBLa/jpSNRRqac5VfbrqVihG7pP\nDKMIZXaJoQKBgFp+wq7UQABbWHviVl0XmmRT62qxEyyQ6UENEZN0qsGKhUhnQ4py\neokSuPZDNpKG6qhXnfiUXUdRMsPqSuySkLU4Zl53r9ednRjGqBKxf05cA2+XYsd0\nNIGn/VlXblehcNuaqEOqJSNjGjCfd/cXzhR6D73uWWz3ZV4XDug7QazjAoGBAOKH\nheE8exjXDs6rpar/5BCdtLY1eyPBUANWOxg4XKgyglaQW0B/zkL9zxBNNJsdJHAw\nNZl7tfgoaoSiKL5phcD4e4Zs1ywT8cSA/mMCB6TP6RJmiauwZLubmWqzBrPmtldJ\nlC3B4J4aPtS1QOOVDk+/COOBGugRbtX5jkx7wqWhAoGBAITYn5mE5IEWV7M36LpW\nTytu7lQs2Su14FexUCexYTvzt3qagrIMHQpDNx/sjf3zZXiisXz4Yr4Qb1y3pdRe\nuq1gBHeOjVJgvEMI7CL950bVn1VIKIZz6FemAo7QXV5w1r1ezyWG68ADNlqlFDN0\nxLliEL96RSckR4VXjSnrWgpf\n-----END PRIVATE KEY-----\n",
+      client_email: "firebase-adminsdk-fbsvc@datingapp-146b1.iam.gserviceaccount.com",
+      client_id: "107122755392112652115",
+      auth_uri: "https://accounts.google.com/o/oauth2/auth",
+      token_uri: "https://oauth2.googleapis.com/token",
+      auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
+      client_x509_cert_url: "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40datingapp-146b1.iam.gserviceaccount.com",
       universe_domain: "googleapis.com"
     };
 
-    // Validate required fields
-    if (!serviceAccount.project_id || !serviceAccount.private_key || !serviceAccount.client_email) {
-      throw new Error("Missing required Firebase service account credentials in environment variables");
-    }
-
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      databaseURL: `https://${process.env.FIREBASE_PROJECT_ID}-default-rtdb.firebaseio.com`,
-      storageBucket: `${process.env.FIREBASE_PROJECT_ID}.firebasestorage.app`
+      projectId: "datingapp-146b1",
+      databaseURL: "https://datingapp-146b1-default-rtdb.firebaseio.com",
+      storageBucket: "datingapp-146b1.firebasestorage.app"
     });
 
     console.log("✅ Firebase Admin SDK initialized successfully");
   } catch (error) {
     console.error("❌ Firebase Admin SDK initialization failed:", error.message);
-    console.error("Please check your Firebase environment variables in .env file");
     process.exit(1);
   }
 }
@@ -70,9 +64,9 @@ const db = require("./util/connection");
 
 //Declare global variable for settings
 global.settingJSON = {
-  projectId: process.env.FIREBASE_PROJECT_ID,
-  privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : null,
-  clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+  projectId: "datingapp-146b1",
+  privateKey: "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDSFnEchobDrhSP\n2DteSlS2YvtQYidXldr6DjRewPm95gBrrDNbTQ8qWKMNNO16NN/F6T9SH/1+dAVy\nOSgSmQBO4hkN/j0dT6bWwTO4kabo52NjQRAZLgBA9xZIATij7f3XjPCJeJJwTWMJ\nSAfQ9Fzll0dlxm3rG4xf3macLhGpLd+A/z6rvx55HZJanfUWykFeBKbVg9Y5/JiE\ngRu+TwvkurXNRdJW+vquXKDNHN4jtOJRYNhfXQ0JlQQQ/1oFBhmQt29KkOxLSwhR\nTyKvlHBbAOAqfpIaTtGrQaYIC2SwcisxFob9iRQBtTRVSwV9BHhH12mJHm2LaoEV\nNsR2G4RnAgMBAAECggEAPsIgeQaA1Iy4rL3KAmFPDArmiz0/Bm2INCGxKEsab814\n+7E9yDztVleTIbtZY6PO4ybJ2SUgSzmqdNQ5MdEN5AKrvF/h7tMgAlBFvJGaHEIf\nEQPbJMJ2pfGJ8OmYe3P5W/5IzrA7gpvDhX7Egvm0lItL803DATRCC1N7MJWchf5Z\nEYB0jtzt2zBnR/ZI8XTeLoTyOHJBUKl2ucwRrEiP3buj2G6Nrbv/lRJOf0i9NQTn\nitDzFnD3q9wJmjLZThWoxjMMUCH8MPwVtwf2KREqdQ/A5IafbZIfpSGaNX7OAJ8w\nqhmHaeXxVqZZsmVxQkdHP0VjWGGYAiUEAU6MARFYoQKBgQDqDrOgk5KmtpHcAE47\nXWrRf7/5LOLjviWVMb5QyTvXmdOYtmD8ZLd3TIKpeDQwgmvprNXSayvVbkZt3uk5\n+dmgaqSltcQpuEvL8mPFTBXxOPgBKPivDfjYff6ehiT82xQV0U12hcBtW3p51rme\nOIcuWAovCl6JeEJpdZ5/tCAhBwKBgQDlyHlYKJdRQWNswUQsgrx4+91adL4VjHt3\nvNMvK0KGdAi0mKaUDSpvda0sL0QPxuC1BB+4jpvaOZk+97BH5qBI5jYc2toUm73M\nuxxv+eSJZRLhrtQkaev5fL/Apw5TzuRrH9O2+aBLa/jpSNRRqac5VfbrqVihG7pP\nDKMIZXaJoQKBgFp+wq7UQABbWHviVl0XmmRT62qxEyyQ6UENEZN0qsGKhUhnQ4py\neokSuPZDNpKG6qhXnfiUXUdRMsPqSuySkLU4Zl53r9ednRjGqBKxf05cA2+XYsd0\nNIGn/VlXblehcNuaqEOqJSNjGjCfd/cXzhR6D73uWWz3ZV4XDug7QazjAoGBAOKH\nheE8exjXDs6rpar/5BCdtLY1eyPBUANWOxg4XKgyglaQW0B/zkL9zxBNNJsdJHAw\nNZl7tfgoaoSiKL5phcD4e4Zs1ywT8cSA/mMCB6TP6RJmiauwZLubmWqzBrPmtldJ\nlC3B4J4aPtS1QOOVDk+/COOBGugRbtX5jkx7wqWhAoGBAITYn5mE5IEWV7M36LpW\nTytu7lQs2Su14FexUCexYTvzt3qagrIMHQpDNx/sjf3zZXiisXz4Yr4Qb1y3pdRe\nuq1gBHeOjVJgvEMI7CL950bVn1VIKIZz6FemAo7QXV5w1r1ezyWG68ADNlqlFDN0\nxLliEL96RSckR4VXjSnrWgpf\n-----END PRIVATE KEY-----\n",
+  clientEmail: "firebase-adminsdk-fbsvc@datingapp-146b1.iam.gserviceaccount.com",
   secretKey: process.env.secretKey || "secretKey"
 };
 
@@ -91,6 +85,7 @@ global.updateSettingFile = (settingData) => {
     console.error("❌ Error updating settings:", error);
   }
 };
+
 app.get("/api/health", (req, res) => {
   res.status(200).json({ 
     status: "OK", 
@@ -99,11 +94,10 @@ app.get("/api/health", (req, res) => {
     port: process.env.PORT || 5000
   });
 });
+
 //API
 const route = require("./routes/route");
 app.use("/api", route);
-
-
 
 // Socket.io connection handling
 require("./socket");

@@ -52,37 +52,13 @@ jobs:
           git clone https://github.com/${{ github.repository }}.git backend
           cd backend
           
-          # ✅ Create production environment file with secrets
+          # ✅ Create simple environment file (no multiline variables)
           cat > .env << 'EOF'
-          # Server Configuration
           NODE_ENV=production
           PORT=5000
-          
-          # Project Configuration
-          PROJECT_NAME=${{ secrets.PROJECT_NAME }}
-          SECRET_KEY=${{ secrets.SECRET_KEY }}
-          BASE_URL=${{ secrets.BASE_URL }}
-          
-          # JWT Configuration
-          JWT_SECRET=${{ secrets.JWT_SECRET }}
-          
-          # Email Configuration
-          EMAIL=${{ secrets.EMAIL }}
-          
-          # MongoDB Configuration
+          secretKey=secretKey
+          EMAIL=EMAIL
           MONGODB_CONNECTION_STRING=${{ secrets.MONGODB_CONNECTION_STRING }}
-          
-          # Firebase Configuration
-          FIREBASE_TYPE=service_account
-          FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }}
-          FIREBASE_PRIVATE_KEY_ID=${{ secrets.FIREBASE_PRIVATE_KEY_ID }}
-          FIREBASE_PRIVATE_KEY="${{ secrets.FIREBASE_PRIVATE_KEY }}"
-          FIREBASE_CLIENT_EMAIL=${{ secrets.FIREBASE_CLIENT_EMAIL }}
-          FIREBASE_CLIENT_ID=${{ secrets.FIREBASE_CLIENT_ID }}
-          FIREBASE_AUTH_URI=https://accounts.google.com/o/oauth2/auth
-          FIREBASE_TOKEN_URI=https://oauth2.googleapis.com/token
-          FIREBASE_AUTH_PROVIDER_X509_CERT_URL=https://www.googleapis.com/oauth2/v1/certs
-          FIREBASE_CLIENT_X509_CERT_URL=${{ secrets.FIREBASE_CLIENT_X509_CERT_URL }}
           EOF
           
           # ✅ Stop existing containers
@@ -128,7 +104,8 @@ jobs:
           # Test the API
           echo "=== API Health Check ==="
           sleep 10
-          curl -f http://localhost:5000/ || echo "API not responding"
+          curl -f http://localhost:5000/api/health || echo "API not responding"
+          curl -f http://localhost:5000/ || echo "Root endpoint not responding"
           
           # Clean up old images
           docker image prune -f

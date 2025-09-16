@@ -21,7 +21,7 @@ RUN addgroup -g 1001 -S nodejs && \
 # Switch to non-root user
 USER nodejs
 
-# Expose port 5000 (as per your .env file)
+# Expose port 5000
 EXPOSE 5000
 
 # Health check
