@@ -1,0 +1,136 @@
+name: Deploy Figgy Backend to DigitalOcean
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Deploy to DigitalOcean Droplet
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.DROPLET_HOST }}
+        username: ${{ secrets.DROPLET_USER }}
+        password: ${{ secrets.DROPLET_PASSWORD }}
+        script: |
+          # ✅ INSTALL DOCKER & DOCKER COMPOSE IF NOT PRESENT
+          if ! command -v docker &> /dev/null; then
+            echo "🔧 Installing Docker..."
+            apt update
+            apt install -y apt-transport-https ca-certificates curl software-properties-common
+            curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
+            add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+            apt update
+            apt install -y docker-ce docker-ce-cli containerd.io
+            systemctl start docker
+            systemctl enable docker
+            echo "✅ Docker installed"
+          else
+            echo "✅ Docker already present"
+          fi
+          
+          if ! command -v docker-compose &> /dev/null; then
+            echo "🔧 Installing Docker Compose..."
+            curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+            chmod +x /usr/local/bin/docker-compose
+            ln -sf /usr/local/bin/docker-compose /usr/bin/docker-compose
+            echo "✅ Docker Compose installed"
+          else
+            echo "✅ Docker Compose already present"
+          fi
+
+          # Create and navigate to project directory
+          mkdir -p /opt/figgy-backend
+          cd /opt/figgy-backend
+          
+          # Clean up and get fresh code
+          rm -rf backend
+          git clone https://github.com/${{ github.repository }}.git backend
+          cd backend
+          
+          # ✅ Create production environment file with secrets
+          cat > .env << 'EOF'
+          # Server Configuration
+          NODE_ENV=production
+          PORT=5000
+          
+          # Project Configuration
+          PROJECT_NAME=${{ secrets.PROJECT_NAME }}
+          SECRET_KEY=${{ secrets.SECRET_KEY }}
+          BASE_URL=${{ secrets.BASE_URL }}
+          
+          # JWT Configuration
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          
+          # Email Configuration
+          EMAIL=${{ secrets.EMAIL }}
+          
+          # MongoDB Configuration
+          MONGODB_CONNECTION_STRING=${{ secrets.MONGODB_CONNECTION_STRING }}
+          
+          # Firebase Configuration
+          FIREBASE_TYPE=service_account
+          FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_PRIVATE_KEY_ID=${{ secrets.FIREBASE_PRIVATE_KEY_ID }}
+          FIREBASE_PRIVATE_KEY="${{ secrets.FIREBASE_PRIVATE_KEY }}"
+          FIREBASE_CLIENT_EMAIL=${{ secrets.FIREBASE_CLIENT_EMAIL }}
+          FIREBASE_CLIENT_ID=${{ secrets.FIREBASE_CLIENT_ID }}
+          FIREBASE_AUTH_URI=https://accounts.google.com/o/oauth2/auth
+          FIREBASE_TOKEN_URI=https://oauth2.googleapis.com/token
+          FIREBASE_AUTH_PROVIDER_X509_CERT_URL=https://www.googleapis.com/oauth2/v1/certs
+          FIREBASE_CLIENT_X509_CERT_URL=${{ secrets.FIREBASE_CLIENT_X509_CERT_URL }}
+          EOF
+          
+          # ✅ Stop existing containers
+          echo "=== Stopping existing containers ==="
+          docker-compose -f docker-compose.prod.yml down 2>/dev/null || echo "No existing containers to stop"
+          
+          # Build the backend
+          echo "=== Building Figgy Backend ==="
+          if ! docker-compose -f docker-compose.prod.yml build --no-cache figgy-backend; then
+            echo "❌ Build failed! Checking logs..."
+            docker-compose -f docker-compose.prod.yml logs figgy-backend
+            exit 1
+          fi
+          
+          # Start the backend
+          echo "=== Starting Figgy Backend ==="
+          if ! docker-compose -f docker-compose.prod.yml up -d figgy-backend; then
+            echo "❌ Container startup failed! Checking logs..."
+            docker-compose -f docker-compose.prod.yml logs figgy-backend
+            exit 1
+          fi
+          
+          # Wait for container to start
+          sleep 20
+          
+          # Show running containers
+          echo "=== Running Containers ==="
+          docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
+          
+          # Check container status
+          echo "=== Figgy Backend Status ==="
+          docker-compose -f docker-compose.prod.yml ps figgy-backend
+          
+          # Check logs for any errors
+          echo "=== Recent Container Logs ==="
+          docker-compose -f docker-compose.prod.yml logs --tail=50 figgy-backend
+          
+          # Check if port 5000 is listening
+          echo "=== Port Status ==="
+          apt update && apt install -y net-tools
+          netstat -tlnp | grep :5000 || echo "Port 5000 not listening"
+          
+          # Test the API
+          echo "=== API Health Check ==="
+          sleep 10
+          curl -f http://localhost:5000/ || echo "API not responding"
+          
+          # Clean up old images
+          docker image prune -f
+          
+          echo "✅ Figgy Backend deployment complete!"

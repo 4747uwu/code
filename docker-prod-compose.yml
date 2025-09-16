@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  figgy-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: figgy-backend
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=production
+      - PORT=${PORT}
+      - projectName=${PROJECT_NAME}
+      - JWT_SECRET=${JWT_SECRET}
+      - EMAIL=${EMAIL}
+      - secretKey=${SECRET_KEY}
+      - baseURL=${BASE_URL}
+      - MongoDb_Connection_String=${MONGODB_CONNECTION_STRING}
+      - FIREBASE_TYPE=${FIREBASE_TYPE}
+      - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
+      - FIREBASE_PRIVATE_KEY_ID=${FIREBASE_PRIVATE_KEY_ID}
+      - FIREBASE_PRIVATE_KEY=${FIREBASE_PRIVATE_KEY}
+      - FIREBASE_CLIENT_EMAIL=${FIREBASE_CLIENT_EMAIL}
+      - FIREBASE_CLIENT_ID=${FIREBASE_CLIENT_ID}
+      - FIREBASE_AUTH_URI=${FIREBASE_AUTH_URI}
+      - FIREBASE_TOKEN_URI=${FIREBASE_TOKEN_URI}
+      - FIREBASE_AUTH_PROVIDER_X509_CERT_URL=${FIREBASE_AUTH_PROVIDER_X509_CERT_URL}
+      - FIREBASE_CLIENT_X509_CERT_URL=${FIREBASE_CLIENT_X509_CERT_URL}
+    volumes:
+      - ./storage:/app/storage
+    restart: unless-stopped
+    networks:
+      - figgy-network
+
+networks:
+  figgy-network:
+    driver: bridge
+
+
