@@ -3,23 +3,19 @@ version: '3.8'
 services:
   figgy-backend:
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile
     container_name: figgy-backend
     ports:
       - "5000:5000"
     environment:
       - NODE_ENV=production
-      - PORT=${PORT}
-      - projectName=${PROJECT_NAME}
-      - JWT_SECRET=${JWT_SECRET}
-      - EMAIL=${EMAIL}
-      - secretKey=${SECRET_KEY}
-      - baseURL=${BASE_URL}
+      - PORT=5000
+      - secretKey=secretKey
+      - EMAIL=EMAIL
       - MongoDb_Connection_String=${MONGODB_CONNECTION_STRING}
-      
     volumes:
-      - ./storage:/app/storage
+      - ./backend/storage:/app/storage
     restart: unless-stopped
     networks:
       - figgy-network

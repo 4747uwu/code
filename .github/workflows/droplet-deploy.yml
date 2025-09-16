@@ -44,40 +44,42 @@ jobs:
           fi
 
           # Create and navigate to project directory
-          mkdir -p /opt/figgy-backend
-          cd /opt/figgy-backend
+          mkdir -p /opt/figgy-project
+          cd /opt/figgy-project
           
           # Clean up and get fresh code
-          rm -rf backend
-          git clone https://github.com/${{ github.repository }}.git backend
-          cd backend
+          rm -rf figgy-app
+          git clone https://github.com/${{ github.repository }}.git figgy-app
+          cd figgy-app
           
-          # ✅ Create simple environment file (no multiline variables)
+          # ✅ Create environment file for MongoDB connection
           cat > .env << 'EOF'
-          NODE_ENV=production
-          PORT=5000
-          secretKey=secretKey
-          EMAIL=EMAIL
           MONGODB_CONNECTION_STRING=${{ secrets.MONGODB_CONNECTION_STRING }}
           EOF
           
+          # ✅ List files to verify structure
+          echo "=== Repository Structure ==="
+          ls -la
+          echo "=== Backend Directory ==="
+          ls -la backend/
+          
           # ✅ Stop existing containers
           echo "=== Stopping existing containers ==="
-          docker-compose -f docker-compose.prod.yml down 2>/dev/null || echo "No existing containers to stop"
+          docker-compose down 2>/dev/null || echo "No existing containers to stop"
           
           # Build the backend
           echo "=== Building Figgy Backend ==="
-          if ! docker-compose -f docker-compose.prod.yml build --no-cache figgy-backend; then
+          if ! docker-compose build --no-cache figgy-backend; then
             echo "❌ Build failed! Checking logs..."
-            docker-compose -f docker-compose.prod.yml logs figgy-backend
+            docker-compose logs figgy-backend
             exit 1
           fi
           
           # Start the backend
           echo "=== Starting Figgy Backend ==="
-          if ! docker-compose -f docker-compose.prod.yml up -d figgy-backend; then
+          if ! docker-compose up -d figgy-backend; then
             echo "❌ Container startup failed! Checking logs..."
-            docker-compose -f docker-compose.prod.yml logs figgy-backend
+            docker-compose logs figgy-backend
             exit 1
           fi
           
@@ -90,11 +92,11 @@ jobs:
           
           # Check container status
           echo "=== Figgy Backend Status ==="
-          docker-compose -f docker-compose.prod.yml ps figgy-backend
+          docker-compose ps figgy-backend
           
           # Check logs for any errors
           echo "=== Recent Container Logs ==="
-          docker-compose -f docker-compose.prod.yml logs --tail=50 figgy-backend
+          docker-compose logs --tail=50 figgy-backend
           
           # Check if port 5000 is listening
           echo "=== Port Status ==="
