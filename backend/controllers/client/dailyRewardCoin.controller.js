@@ -79,8 +79,16 @@ exports.processDailyCheckIn = async (req, res) => {
     const today = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD' format
     const dayOfWeek = ((new Date(today).getDay() + 6) % 7) + 1; // Monday = 1, Sunday = 7
 
-    const [uniqueId, user, userCheckIn, rewardForToday] = await Promise.all([
-      generateHistoryUniqueId(),
+    // ✅ Generate unique ID with error handling
+    let uniqueId;
+    try {
+      uniqueId = await generateHistoryUniqueId();
+    } catch (error) {
+      console.error("❌ Error generating unique ID:", error);
+      uniqueId = `DAILY_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
+    }
+
+    const [user, userCheckIn, rewardForToday] = await Promise.all([
       User.findOne({ _id: userId }).select("isBlock coin rewardCoin fcmToken").lean(),
       CheckIn.findOne({ userId }).select("rewardsCollected lastCheckInDate consecutiveDays"),
       DailyRewardCoin.findOne({ dailyRewardCoin, day: dayOfWeek }).select("dailyRewardCoin").lean(),
@@ -90,37 +98,34 @@ exports.processDailyCheckIn = async (req, res) => {
       return res.status(200).json({ status: false, message: "No reward configured for today." });
     }
 
+    if (!user) {
+      return res.status(200).json({ status: false, message: "User not found." });
+    }
+
+    if (user.isBlock) {
+      return res.status(200).json({ status: false, message: "Your account has been blocked by the admin." });
+    }
+
+    let updatedUserCheckIn;
     if (userCheckIn) {
       //Find today's check-in for the current week (same day of the week)
-      const lastCheckInDate = userCheckIn?.lastCheckInDate ? new Date(userCheckIn.lastCheckInDate).toISOString().slice(0, 10) : null;
+      const todayRewardDay = ((new Date(today).getDay() + 6) % 7) + 1; // Monday = 1, Sunday = 7
+      const alreadyCollectedToday = userCheckIn.rewardsCollected.some((day) => day === todayRewardDay);
 
-      //Check if user has already checked in today
-      if (lastCheckInDate === today) {
-        return res.status(200).json({ status: false, message: "You have already checked in today." });
+      if (alreadyCollectedToday) {
+        return res.status(200).json({ status: false, message: "You have already collected today's reward!" });
       }
-    }
 
-    res.status(200).json({
-      status: true,
-      message: "Check-in successful",
-      isCheckIn: true,
-    });
-
-    let updatedUserCheckIn = userCheckIn;
-    if (!updatedUserCheckIn) {
+      updatedUserCheckIn = userCheckIn;
+      updatedUserCheckIn.rewardsCollected.push(todayRewardDay);
+    } else {
       updatedUserCheckIn = new CheckIn({
         userId,
-        rewardsCollected: [],
-        consecutiveDays: 0,
+        rewardsCollected: [((new Date(today).getDay() + 6) % 7) + 1], // Add today's day number
+        lastCheckInDate: today,
+        consecutiveDays: 1,
       });
     }
-
-    updatedUserCheckIn.rewardsCollected.push({
-      day: dayOfWeek,
-      isCheckIn: true,
-      reward: rewardForToday.dailyRewardCoin || dailyRewardCoin,
-      checkInDate: today,
-    });
 
     const lastCheckInDate = userCheckIn?.lastCheckInDate ? new Date(userCheckIn.lastCheckInDate).toISOString().slice(0, 10) : null;
 
@@ -153,32 +158,44 @@ exports.processDailyCheckIn = async (req, res) => {
       }),
     ]);
 
+    res.status(200).json({
+      status: true,
+      message: "Daily check-in reward collected successfully!",
+      earnedCoins: dailyRewardCoin,
+      consecutiveDays: updatedUserCheckIn.consecutiveDays,
+    });
+
+    // ✅ Handle push notification after response is sent
     if (user.fcmToken && user.fcmToken !== null) {
-      const adminPromise = await admin;
+      try {
+        const adminPromise = await admin;
 
-      const payload = {
-        token: user.fcmToken,
-        notification: {
-          title: "🌟 Daily Check-in Reward Unlocked! 💰",
-          body: `Way to go! You've earned ${dailyRewardCoin} coins for checking in today. Come back tomorrow for more rewards! 🌟💸`,
-        },
-        data: {
-          type: "DAILY_CHECKIN_REWARD",
-        },
-      };
+        const payload = {
+          token: user.fcmToken,
+          notification: {
+            title: "🌟 Daily Check-in Reward Unlocked! 💰",
+            body: `Way to go! You've earned ${dailyRewardCoin} coins for checking in today. Come back tomorrow for more rewards! 🌟💸`,
+          },
+          data: {
+            type: "DAILY_CHECKIN_REWARD",
+          },
+        };
 
-      adminPromise
-        .messaging()
-        .send(payload)
-        .then((response) => {
-          console.log("Successfully sent with response: ", response);
-        })
-        .catch((error) => {
-          console.log("Error sending message: ", error);
-        });
+        adminPromise
+          .messaging()
+          .send(payload)
+          .then((response) => {
+            console.log("Successfully sent daily check-in notification: ", response);
+          })
+          .catch((error) => {
+            console.log("Error sending daily check-in notification: ", error);
+          });
+      } catch (notificationError) {
+        console.error("❌ Push notification error:", notificationError);
+      }
     }
   } catch (error) {
-    console.log(error);
+    console.log("❌ Daily check-in error:", error);
     return res.status(500).json({ status: false, error: error.message || "Internal Server Error" });
   }
 };

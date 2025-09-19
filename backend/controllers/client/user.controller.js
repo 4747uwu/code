@@ -74,7 +74,7 @@ exports.signInOrSignUpUser = async (req, res) => {
         if (!identity && !email) {
           return res.status(200).json({ status: false, message: "Either identity or email is required." });
         }
-        userQuery = {};
+        userQuery = { identity, loginType: 3 };
         break;
       default:
         if (req.file) deleteFile(req.file);
@@ -90,23 +90,10 @@ exports.signInOrSignUpUser = async (req, res) => {
       console.log("✅ User already exists, logging in...");
 
       if (user.isBlock) {
-        return res.status(403).json({ status: false, message: "🚷 User is blocked by the admin." });
+        if (req.file) deleteFile(req.file);
+        return res.status(200).json({ status: false, message: "Your account has been blocked by the admin." });
       }
 
-      if (user.isHost && user.hostId) {
-        const host = await Host.findById(user.hostId).select("isBlock fcmToken");
-        if (host && host.isBlock) {
-          return res.status(403).json({ status: false, message: "🚷 Host account is blocked by the admin." });
-        }
-
-        host.fcmToken = fcmToken ? fcmToken : host.fcmToken;
-        await host.save();
-      }
-
-      user.name = name ? name?.trim() : user.name;
-      user.dob = dob ? dob?.trim() : user.dob;
-      user.image = req.file ? req.file.path : image ? image : user.image;
-      user.fcmToken = fcmToken ? fcmToken : user.fcmToken;
       user.lastlogin = new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
       await user.save();
 
@@ -124,7 +111,17 @@ exports.signInOrSignUpUser = async (req, res) => {
 
       const user = await userFunction(newUser, req);
 
-      res.status(200).json({
+      // ✅ Generate unique ID with error handling
+      let uniqueId;
+      try {
+        uniqueId = await generateHistoryUniqueId();
+      } catch (error) {
+        console.error("❌ Error generating unique ID:", error);
+        uniqueId = `HIST_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
+      }
+
+      // ✅ Send response first, then handle background operations
+      const responseData = {
         status: true,
         message: "A new user has registered an account.",
         signUp: true,
@@ -136,48 +133,59 @@ exports.signInOrSignUpUser = async (req, res) => {
           fcmToken: user.fcmToken,
           lastlogin: user.lastlogin,
         },
-      });
+      };
 
-      const uniqueId = await generateHistoryUniqueId();
+      res.status(200).json(responseData);
 
-      await Promise.all([
-        History.create({
-          uniqueId: uniqueId,
-          userId: newUser._id,
-          userCoin: bonusCoins,
-          type: 1,
-          date: new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
-        }),
-      ]);
+      // ✅ Handle background operations after response is sent
+      try {
+        await Promise.all([
+          History.create({
+            uniqueId: uniqueId,
+            userId: user._id,
+            userCoin: bonusCoins,
+            type: 1,
+            date: new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
+          }),
+        ]);
 
-      if (user && user.fcmToken && user.fcmToken !== null) {
-        const payload = {
-          token: user.fcmToken,
-          notification: {
-            title: "🚀 Instant Bonus Activated! 🎁",
-            body: "🎊 Hooray! You've unlocked a special welcome reward just for joining us. Enjoy your bonus! 💰",
-          },
-          data: {
-            type: "LOGINBONUS",
-          },
-        };
+        // Send push notification if FCM token exists
+        if (user && user.fcmToken && user.fcmToken !== null) {
+          const payload = {
+            token: user.fcmToken,
+            notification: {
+              title: "🚀 Instant Bonus Activated! 🎁",
+              body: "🎊 Hooray! You've unlocked a special welcome reward just for joining us. Enjoy your bonus! 💰",
+            },
+            data: {
+              type: "LOGINBONUS",
+            },
+          };
 
-        const adminPromise = await admin;
-        adminPromise
-          .messaging()
-          .send(payload)
-          .then((response) => {
-            console.log("Successfully sent with response: ", response);
-          })
-          .catch((error) => {
-            console.log("Error sending message: ", error);
-          });
+          const adminPromise = await admin;
+          adminPromise
+            .messaging()
+            .send(payload)
+            .then((response) => {
+              console.log("Successfully sent welcome notification: ", response);
+            })
+            .catch((error) => {
+              console.log("Error sending welcome notification: ", error);
+            });
+        }
+      } catch (backgroundError) {
+        console.error("❌ Background operation failed:", backgroundError);
+        // Don't throw error since response is already sent
       }
     }
   } catch (error) {
+    console.error("❌ SignInOrSignUp Error:", error);
     if (req.file) deleteFile(req.file);
-    console.error("Error:", error);
-    res.status(500).json({ status: false, message: "Internal Server Error" });
+    
+    // ✅ Check if response was already sent
+    if (!res.headersSent) {
+      return res.status(500).json({ status: false, message: "Internal Server Error" });
+    }
   }
 };
 
