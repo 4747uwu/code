@@ -184,30 +184,89 @@ exports.signInOrSignUpUser = async (req, res) => {
 //update profile of the user
 exports.modifyUserProfile = async (req, res) => {
   try {
+    console.log("🔧 [MODIFY USER] Starting user profile modification...");
+    console.log("🔧 [MODIFY USER] Request body:", req.body);
+    console.log("🔧 [MODIFY USER] Request file:", req.file ? {
+      fieldname: req.file.fieldname,
+      originalname: req.file.originalname,
+      filename: req.file.filename,
+      path: req.file.path,
+      size: req.file.size
+    } : "No file uploaded");
+
     if (!req.user || !req.user.userId) {
+      console.log("❌ [MODIFY USER] Unauthorized access - no user ID");
       return res.status(401).json({ status: false, message: "Unauthorized access. Invalid token." });
     }
 
-    res.status(200).json({ status: true, message: "The user's profile has been modified." });
-
     const userId = new mongoose.Types.ObjectId(req.user.userId);
+    console.log("🔧 [MODIFY USER] User ID:", userId);
 
+    // ✅ DON'T SEND RESPONSE YET - Do the work first
     const [user] = await Promise.all([User.findOne({ _id: userId })]);
 
+    if (!user) {
+      console.log("❌ [MODIFY USER] User not found in database");
+      if (req.file) deleteFile(req.file);
+      return res.status(404).json({ status: false, message: "User not found." });
+    }
+
+    console.log("🔧 [MODIFY USER] Current user data:", {
+      _id: user._id,
+      name: user.name,
+      image: user.image,
+      gender: user.gender
+    });
+
+    let oldImagePath = null;
+
     if (req?.file) {
-      const image = user?.image?.split("storage");
-      if (image) {
-        const imagePath = "storage" + image[1];
-        if (fs.existsSync(imagePath)) {
-          const imageName = imagePath?.split("/")?.pop();
-          if (imageName !== "male.png" && imageName !== "female.png") {
-            fs.unlinkSync(imagePath);
+      console.log("📁 [MODIFY USER] Processing file upload...");
+      console.log("📁 [MODIFY USER] New file path:", req.file.path);
+      
+      // Handle old image deletion
+      if (user.image) {
+        console.log("🗑️ [MODIFY USER] Current image path:", user.image);
+        const image = user.image.split("storage");
+        if (image && image[1]) {
+          oldImagePath = "storage" + image[1];
+          console.log("🗑️ [MODIFY USER] Old image path to delete:", oldImagePath);
+          
+          if (fs.existsSync(oldImagePath)) {
+            const imageName = oldImagePath.split("/").pop();
+            console.log("🗑️ [MODIFY USER] Old image filename:", imageName);
+            
+            if (imageName !== "male.png" && imageName !== "female.png") {
+              try {
+                fs.unlinkSync(oldImagePath);
+                console.log("✅ [MODIFY USER] Old image deleted successfully");
+              } catch (deleteError) {
+                console.error("❌ [MODIFY USER] Error deleting old image:", deleteError);
+              }
+            } else {
+              console.log("🔒 [MODIFY USER] Skipping deletion of default image:", imageName);
+            }
+          } else {
+            console.log("⚠️ [MODIFY USER] Old image file doesn't exist:", oldImagePath);
           }
         }
       }
 
-      user.image = req?.file?.path;
+      user.image = req.file.path;
+      console.log("📁 [MODIFY USER] Updated user image path:", user.image);
     }
+
+    // Update other fields
+    const oldValues = {
+      name: user.name,
+      selfIntro: user.selfIntro,
+      gender: user.gender,
+      bio: user.bio,
+      dob: user.dob,
+      age: user.age,
+      countryFlagImage: user.countryFlagImage,
+      country: user.country
+    };
 
     user.name = req.body.name ? req.body.name : user.name;
     user.selfIntro = req.body.selfIntro ? req.body.selfIntro : user.selfIntro;
@@ -217,10 +276,54 @@ exports.modifyUserProfile = async (req, res) => {
     user.age = req.body.age ? req.body.age : user.age;
     user.countryFlagImage = req.body.countryFlagImage ? req.body.countryFlagImage : user.countryFlagImage;
     user.country = req.body.country ? req.body.country.toLowerCase()?.trim() : user.country;
+
+    console.log("🔧 [MODIFY USER] Field changes:", {
+      oldValues,
+      newValues: {
+        name: user.name,
+        selfIntro: user.selfIntro,
+        gender: user.gender,
+        bio: user.bio,
+        dob: user.dob,
+        age: user.age,
+        countryFlagImage: user.countryFlagImage,
+        country: user.country,
+        image: user.image
+      }
+    });
+
+    // Save to database
+    console.log("💾 [MODIFY USER] Saving user to database...");
     await user.save();
+    console.log("✅ [MODIFY USER] User saved successfully");
+
+    // ✅ NOW send the response with updated data
+    const responseData = {
+      status: true,
+      message: "The user's profile has been modified.",
+      user: {
+        _id: user._id,
+        name: user.name,
+        image: user.image,
+        gender: user.gender,
+        bio: user.bio,
+        dob: user.dob,
+        age: user.age,
+        countryFlagImage: user.countryFlagImage,
+        country: user.country,
+        selfIntro: user.selfIntro
+      }
+    };
+
+    console.log("📤 [MODIFY USER] Sending response:", responseData);
+    res.status(200).json(responseData);
+
   } catch (error) {
-    if (req.file) deleteFile(req.file);
-    console.log(error);
+    console.error("❌ [MODIFY USER] Error in modifyUserProfile:", error);
+    if (req.file) {
+      console.log("🗑️ [MODIFY USER] Deleting uploaded file due to error");
+      deleteFile(req.file);
+    }
     return res.status(500).json({ status: false, error: error.message || "Internal Server Error" });
   }
 };

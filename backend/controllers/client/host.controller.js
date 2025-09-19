@@ -65,34 +65,75 @@ exports.validateAgencyCode = async (req, res) => {
 //host request ( user )
 exports.initiateHostRequest = async (req, res) => {
   try {
+    console.log("🎭 [HOST REQUEST] Starting host request...");
+    console.log("🎭 [HOST REQUEST] Request body:", req.body);
+    console.log("🎭 [HOST REQUEST] Request files:", req.files ? Object.keys(req.files) : "No files");
+
     if (!req.user || !req.user.userId) {
+      console.log("❌ [HOST REQUEST] Unauthorized access");
       return res.status(401).json({ status: false, message: "Unauthorized access. Invalid token." });
     }
 
     const userId = new mongoose.Types.ObjectId(req.user.userId);
+    console.log("🎭 [HOST REQUEST] User ID:", userId);
 
     const { email, fcmToken, name, bio, dob, gender, countryFlagImage, country, language, impression, agencyCode, identityProofType } = req.body;
 
+    // Validate required fields
     if (!email || !fcmToken || !name || !bio || !dob || !gender || !countryFlagImage || !country || !impression || !language || !identityProofType || !req.files) {
+      console.log("❌ [HOST REQUEST] Missing required fields:", {
+        email: !!email,
+        fcmToken: !!fcmToken,
+        name: !!name,
+        bio: !!bio,
+        dob: !!dob,
+        gender: !!gender,
+        countryFlagImage: !!countryFlagImage,
+        country: !!country,
+        impression: !!impression,
+        language: !!language,
+        identityProofType: !!identityProofType,
+        files: !!req.files
+      });
       if (req.files) deleteFiles(req.files);
       return res.status(200).json({ status: false, message: "Oops ! Invalid details." });
     }
 
+    // Validate file uploads
     if (!req.files.identityProof) {
+      console.log("❌ [HOST REQUEST] Missing identity proof files");
       if (req.files) deleteFiles(req.files);
       return res.status(200).json({ status: false, message: "Identity proof is missing. Please upload a valid file." });
     }
 
     if (!req.files.photoGallery) {
+      console.log("❌ [HOST REQUEST] Missing photo gallery files");
       if (req.files) deleteFiles(req.files);
       return res.status(200).json({ status: false, message: "Photo gallery is missing. Please upload the required photos." });
     }
 
     if (!req.files.image) {
+      console.log("❌ [HOST REQUEST] Missing profile image");
       if (req.files) deleteFiles(req.files);
       return res.status(200).json({ status: false, message: "Image is missing. Please upload a valid image." });
     }
 
+    console.log("📁 [HOST REQUEST] File upload details:", {
+      image: req.files.image ? {
+        count: req.files.image.length,
+        paths: req.files.image.map(f => f.path)
+      } : null,
+      identityProof: req.files.identityProof ? {
+        count: req.files.identityProof.length,
+        paths: req.files.identityProof.map(f => f.path)
+      } : null,
+      photoGallery: req.files.photoGallery ? {
+        count: req.files.photoGallery.length,
+        paths: req.files.photoGallery.map(f => f.path)
+      } : null
+    });
+
+    console.log("🔍 [HOST REQUEST] Checking existing host requests...");
     const [uniqueId, agencyDetails, existingHost, declineHostRequest] = await Promise.all([
       generateUniqueId(),
       agencyCode ? Agency.findOne({ agencyCode: agencyCode }).select("_id").lean() : null,
@@ -100,28 +141,45 @@ exports.initiateHostRequest = async (req, res) => {
       Host.findOne({ status: 3, userId: userId }).select("_id").lean(),
     ]);
 
+    console.log("🔍 [HOST REQUEST] Database check results:", {
+      uniqueId,
+      agencyDetails: agencyDetails ? agencyDetails._id : null,
+      existingHost: !!existingHost,
+      declineHostRequest: !!declineHostRequest
+    });
+
     if (existingHost) {
+      console.log("❌ [HOST REQUEST] Host request already exists");
       if (req.files) deleteFiles(req.files);
       return res.status(200).json({ status: false, message: "Oops! A host request already exists under an agency." });
     }
 
     if (agencyCode && !agencyDetails) {
+      console.log("❌ [HOST REQUEST] Invalid agency code:", agencyCode);
       if (req.files) deleteFiles(req.files);
       return res.status(200).json({ status: false, message: "Invalid agency ID." });
     }
 
-    res.status(200).json({
-      status: true,
-      message: "Host request successfully sent.",
-    });
+    // ✅ DON'T SEND RESPONSE YET - Process the data first
 
     if (declineHostRequest) {
-      await Host.findByIdAndDelete(declineHostRequest);
+      console.log("🗑️ [HOST REQUEST] Deleting previous declined request:", declineHostRequest._id);
+      await Host.findByIdAndDelete(declineHostRequest._id);
+      console.log("✅ [HOST REQUEST] Previous declined request deleted");
     }
 
     const impressions = typeof impression === "string" ? impression.split(",").map((topic) => topic.trim()) : [];
     const languages = typeof language === "string" ? language.split(",").map((lang) => lang.trim()) : [];
 
+    console.log("🔧 [HOST REQUEST] Processed data:", {
+      impressions,
+      languages,
+      imagePath: req.files.image[0].path,
+      identityProofPaths: req.files.identityProof.map(f => f.path),
+      photoGalleryPaths: req.files.photoGallery.map(f => f.path)
+    });
+
+    console.log("💾 [HOST REQUEST] Creating new host record...");
     const newHost = new Host({
       email,
       fcmToken,
@@ -145,8 +203,27 @@ exports.initiateHostRequest = async (req, res) => {
     });
 
     await newHost.save();
+    console.log("✅ [HOST REQUEST] Host record saved successfully:", newHost._id);
 
+    // ✅ NOW send the response
+    const responseData = {
+      status: true,
+      message: "Host request successfully sent.",
+      hostId: newHost._id,
+      data: {
+        uniqueId: newHost.uniqueId,
+        status: newHost.status,
+        image: newHost.image,
+        photoGallery: newHost.photoGallery
+      }
+    };
+
+    console.log("📤 [HOST REQUEST] Sending response:", responseData);
+    res.status(200).json(responseData);
+
+    // Handle background notification
     if (fcmToken && fcmToken !== null) {
+      console.log("📱 [HOST REQUEST] Sending push notification...");
       const payload = {
         token: fcmToken,
         notification: {
@@ -158,14 +235,18 @@ exports.initiateHostRequest = async (req, res) => {
       try {
         const adminInstance = await admin;
         await adminInstance.messaging().send(payload);
-        console.log("Notification sent successfully.");
+        console.log("✅ [HOST REQUEST] Notification sent successfully");
       } catch (error) {
-        console.error("Error sending notification:", error);
+        console.error("❌ [HOST REQUEST] Error sending notification:", error);
       }
     }
+
   } catch (error) {
-    if (req.files) deleteFiles(req.files);
-    console.log(error);
+    console.error("❌ [HOST REQUEST] Error in initiateHostRequest:", error);
+    if (req.files) {
+      console.log("🗑️ [HOST REQUEST] Deleting uploaded files due to error");
+      deleteFiles(req.files);
+    }
     return res.status(500).json({ status: false, error: error.message || "Internal Server Error" });
   }
 };
@@ -707,6 +788,10 @@ exports.retrieveAvailableHost = async (req, res) => {
 //update host's info  ( host )
 exports.modifyHostDetails = async (req, res) => {
   try {
+    console.log("🎭 [MODIFY HOST] Starting host modification...");
+    console.log("🎭 [MODIFY HOST] Request body:", req.body);
+    console.log("🎭 [MODIFY HOST] Request files:", req.files ? Object.keys(req.files) : "No files");
+
     const {
       hostId,
       name,
@@ -727,22 +812,40 @@ exports.modifyHostDetails = async (req, res) => {
     } = req.body;
 
     if (!hostId) {
+      console.log("❌ [MODIFY HOST] Missing hostId");
       if (req.files) deleteFiles(req.files);
       return res.status(200).json({ status: false, message: "Missing or invalid host details. Please check and try again." });
     }
 
-    const [host, existingHost] = await Promise.all([Host.findOne({ _id: hostId }), email ? Host.findOne({ email: email?.trim() }).select("_id").lean() : null]);
+    console.log("🔍 [MODIFY HOST] Looking for host:", hostId);
+    const [host, existingHost] = await Promise.all([
+      Host.findOne({ _id: hostId }),
+      email ? Host.findOne({ email: email?.trim(), _id: { $ne: hostId } }).select("_id").lean() : null
+    ]);
 
     if (!host) {
+      console.log("❌ [MODIFY HOST] Host not found");
       if (req.files) deleteFiles(req.files);
       return res.status(200).json({ status: false, message: "Host not found." });
     }
 
+    console.log("🔧 [MODIFY HOST] Current host data:", {
+      _id: host._id,
+      name: host.name,
+      email: host.email,
+      image: host.image,
+      photoGallery: host.photoGallery ? host.photoGallery.length : 0
+    });
+
     if (existingHost) {
+      console.log("❌ [MODIFY HOST] Email already exists for another host");
       if (req.files) deleteFiles(req.files);
       return res.status(200).json({ status: false, message: "A host profile with this email already exists." });
     }
 
+    // ✅ DON'T SEND RESPONSE YET - Process the updates first
+
+    // Update text fields
     host.name = name || host.name;
     host.email = email || host.email;
     host.bio = bio || host.bio;
@@ -750,7 +853,6 @@ exports.modifyHostDetails = async (req, res) => {
     host.gender = gender || host.gender;
     host.countryFlagImage = countryFlagImage || host.countryFlagImage;
     host.country = country || host.country;
-    host.countryFlagImage = countryFlagImage || host.countryFlagImage;
     host.impression = typeof impression === "string" ? impression.split(",") : Array.isArray(impression) ? impression : host.impression;
     host.language = typeof language === "string" ? language.split(",") : Array.isArray(language) ? language : host.language;
     host.randomCallRate = randomCallRate || host.randomCallRate;
@@ -760,31 +862,53 @@ exports.modifyHostDetails = async (req, res) => {
     host.audioCallRate = audioCallRate || host.audioCallRate;
     host.chatRate = chatRate || host.chatRate;
 
-    if (req.files.image) {
+    // Handle profile image update
+    if (req.files && req.files.image) {
+      console.log("📁 [MODIFY HOST] Processing profile image update...");
+      console.log("📁 [MODIFY HOST] New image path:", req.files.image[0].path);
+      
+      // Delete old image
       if (host.image) {
+        console.log("🗑️ [MODIFY HOST] Current image:", host.image);
         const imagePath = host.image.includes("storage") ? "storage" + host.image.split("storage")[1] : "";
         if (imagePath && fs.existsSync(imagePath)) {
           const imageName = imagePath.split("/").pop();
           if (!["male.png", "female.png"].includes(imageName)) {
-            fs.unlinkSync(imagePath);
+            try {
+              fs.unlinkSync(imagePath);
+              console.log("✅ [MODIFY HOST] Old image deleted:", imagePath);
+            } catch (deleteError) {
+              console.error("❌ [MODIFY HOST] Error deleting old image:", deleteError);
+            }
           }
         }
       }
 
       host.image = req.files.image[0].path;
+      console.log("📁 [MODIFY HOST] Updated image path:", host.image);
     }
 
-    if (req.files.photoGallery) {
-      if (host.photoGallery.length > 0) {
+    // Handle photo gallery update
+    if (req.files && req.files.photoGallery) {
+      console.log("📸 [MODIFY HOST] Processing photo gallery update...");
+      console.log("📸 [MODIFY HOST] New gallery count:", req.files.photoGallery.length);
+      
+      // Delete old gallery images
+      if (host.photoGallery && host.photoGallery.length > 0) {
+        console.log("🗑️ [MODIFY HOST] Deleting old gallery images...");
         for (const photo of host.photoGallery) {
-          const photoGalleryPath = photo?.url?.split("storage");
-          if (photoGalleryPath?.[1]) {
-            const filePath = "storage" + photoGalleryPath[1];
-            if (fs.existsSync(filePath)) {
-              try {
-                fs.unlinkSync(filePath);
-              } catch (error) {
-                console.error(`Error deleting file: ${filePath}`, error);
+          const photoPath = typeof photo === 'string' ? photo : photo.url;
+          if (photoPath) {
+            const photoGalleryPath = photoPath.split("storage");
+            if (photoGalleryPath && photoGalleryPath[1]) {
+              const filePath = "storage" + photoGalleryPath[1];
+              if (fs.existsSync(filePath)) {
+                try {
+                  fs.unlinkSync(filePath);
+                  console.log("✅ [MODIFY HOST] Deleted gallery image:", filePath);
+                } catch (error) {
+                  console.error("❌ [MODIFY HOST] Error deleting gallery image:", filePath, error);
+                }
               }
             }
           }
@@ -793,21 +917,41 @@ exports.modifyHostDetails = async (req, res) => {
 
       let updatedPhotoGallery = req.files.photoGallery.map((file) => ({ url: file.path }));
       host.photoGallery = updatedPhotoGallery;
+      console.log("📸 [MODIFY HOST] Updated gallery paths:", updatedPhotoGallery.map(p => p.url));
     }
 
+    console.log("💾 [MODIFY HOST] Saving host to database...");
     await host.save();
+    console.log("✅ [MODIFY HOST] Host saved successfully");
 
-    return res.status(200).json({
+    // ✅ NOW send the response
+    const responseData = {
       status: true,
       message: "Host profile updated successfully.",
-      host,
-    });
+      host: {
+        _id: host._id,
+        name: host.name,
+        email: host.email,
+        image: host.image,
+        photoGallery: host.photoGallery,
+        bio: host.bio,
+        gender: host.gender,
+        country: host.country
+      }
+    };
+
+    console.log("📤 [MODIFY HOST] Sending response:", responseData);
+    return res.status(200).json(responseData);
+
   } catch (error) {
-    if (req.files) deleteFiles(req.files);
-    console.error("Update Host Error:", error);
+    console.error("❌ [MODIFY HOST] Error in modifyHostDetails:", error);
+    if (req.files) {
+      console.log("🗑️ [MODIFY HOST] Deleting uploaded files due to error");
+      deleteFiles(req.files);
+    }
     return res.status(500).json({
       status: false,
-      message: error.message || "Failed to Update host profile due to server error.",
+      message: error.message || "Failed to update host profile due to server error.",
     });
   }
 };

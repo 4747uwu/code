@@ -113,16 +113,31 @@ exports.updateSettingToggle = async (req, res) => {
 };
 
 //get setting
+// In your setting.controller.js
 exports.fetchSettings = async (req, res) => {
   try {
-    const setting = settingJSON ? settingJSON : null;
+    // Get the actual Setting document from database, not settingJSON
+    const setting = await Setting.findOne().lean(); // Get the first/only setting document
+    
     if (!setting) {
-      return res.status(200).json({ status: false, message: "Setting does not found." });
+      return res.status(200).json({ 
+        status: false, 
+        message: "Setting does not found." 
+      });
     }
 
-    return res.status(200).json({ status: true, message: "Success", data: setting });
+    console.log("📤 [fetchSettings] Returning setting with _id:", setting._id);
+
+    return res.status(200).json({ 
+      status: true, 
+      message: "Success", 
+      data: setting  // This will have _id field
+    });
   } catch (error) {
     console.log(error);
-    return res.status(500).json({ status: false, error: error.message || "Internal Server Error" });
+    return res.status(500).json({ 
+      status: false, 
+      error: error.message || "Internal Server Error" 
+    });
   }
 };
