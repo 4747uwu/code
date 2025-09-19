@@ -202,9 +202,8 @@ exports.modifyUserProfile = async (req, res) => {
     const userId = new mongoose.Types.ObjectId(req.user.userId);
     console.log("🔧 [MODIFY USER] User ID:", userId);
 
-    // ✅ DON'T SEND RESPONSE YET - Do the work first
-    const [user] = await Promise.all([User.findOne({ _id: userId })]);
-
+    const user = await User.findById(userId).select("name email image selfIntro gender bio dob age countryFlagImage country");
+    
     if (!user) {
       console.log("❌ [MODIFY USER] User not found in database");
       if (req.file) deleteFile(req.file);
@@ -218,105 +217,72 @@ exports.modifyUserProfile = async (req, res) => {
       gender: user.gender
     });
 
-    let oldImagePath = null;
+    // ✅ Update fields (same as admin approach)
+    const updateFields = {
+      name: req.body?.name || user.name,
+      selfIntro: req.body?.selfIntro || user.selfIntro,
+      gender: req.body?.gender ? req.body.gender.toLowerCase().trim() : user.gender,
+      bio: req.body?.bio || user.bio,
+      dob: req.body?.dob ? req.body.dob.trim() : user.dob,
+      age: req.body?.age || user.age,
+      countryFlagImage: req.body?.countryFlagImage || user.countryFlagImage,
+      country: req.body?.country ? req.body.country.toLowerCase().trim() : user.country,
+    };
 
-    if (req?.file) {
+    // ✅ Handle image upload (EXACTLY like admin)
+    if (req.file) {
       console.log("📁 [MODIFY USER] Processing file upload...");
       console.log("📁 [MODIFY USER] New file path:", req.file.path);
       
-      // Handle old image deletion
+      // Delete old image if exists (SAME AS ADMIN)
       if (user.image) {
         console.log("🗑️ [MODIFY USER] Current image path:", user.image);
-        const image = user.image.split("storage");
-        if (image && image[1]) {
-          oldImagePath = "storage" + image[1];
-          console.log("🗑️ [MODIFY USER] Old image path to delete:", oldImagePath);
-          
-          if (fs.existsSync(oldImagePath)) {
-            const imageName = oldImagePath.split("/").pop();
-            console.log("🗑️ [MODIFY USER] Old image filename:", imageName);
-            
-            if (imageName !== "male.png" && imageName !== "female.png") {
-              try {
-                fs.unlinkSync(oldImagePath);
-                console.log("✅ [MODIFY USER] Old image deleted successfully");
-              } catch (deleteError) {
-                console.error("❌ [MODIFY USER] Error deleting old image:", deleteError);
-              }
-            } else {
-              console.log("🔒 [MODIFY USER] Skipping deletion of default image:", imageName);
+        const imagePath = user.image.includes("storage") ? "storage" + user.image.split("storage")[1] : "";
+        if (imagePath && fs.existsSync(imagePath)) {
+          const imageName = imagePath.split("/").pop();
+          if (!["male.png", "female.png"].includes(imageName)) {
+            try {
+              fs.unlinkSync(imagePath);
+              console.log("✅ [MODIFY USER] Old image deleted successfully");
+            } catch (deleteError) {
+              console.error("❌ [MODIFY USER] Error deleting old image:", deleteError);
             }
           } else {
-            console.log("⚠️ [MODIFY USER] Old image file doesn't exist:", oldImagePath);
+            console.log("🔒 [MODIFY USER] Skipping deletion of default image:", imageName);
           }
+        } else {
+          console.log("⚠️ [MODIFY USER] Old image file doesn't exist:", imagePath);
         }
       }
-
-      user.image = req.file.path;
-      console.log("📁 [MODIFY USER] Updated user image path:", user.image);
+      
+      // Set new image path (EXACTLY like admin)
+      updateFields.image = req.file.path;
+      console.log("📁 [MODIFY USER] Updated image path:", updateFields.image);
     }
 
-    // Update other fields
-    const oldValues = {
-      name: user.name,
-      selfIntro: user.selfIntro,
-      gender: user.gender,
-      bio: user.bio,
-      dob: user.dob,
-      age: user.age,
-      countryFlagImage: user.countryFlagImage,
-      country: user.country
-    };
+    console.log("🔧 [MODIFY USER] Update fields:", updateFields);
 
-    user.name = req.body.name ? req.body.name : user.name;
-    user.selfIntro = req.body.selfIntro ? req.body.selfIntro : user.selfIntro;
-    user.gender = req.body.gender ? req.body.gender?.toLowerCase()?.trim() : user.gender;
-    user.bio = req.body.bio ? req.body.bio : user.bio;
-    user.dob = req.body.dob ? req.body.dob.trim() : user.dob;
-    user.age = req.body.age ? req.body.age : user.age;
-    user.countryFlagImage = req.body.countryFlagImage ? req.body.countryFlagImage : user.countryFlagImage;
-    user.country = req.body.country ? req.body.country.toLowerCase()?.trim() : user.country;
+    // ✅ Update user (SAME AS ADMIN)
+    const updatedUser = await User.findByIdAndUpdate(
+      userId, 
+      updateFields, 
+      { new: true, select: "name email image selfIntro gender bio dob age countryFlagImage country" }
+    ).lean();
 
-    console.log("🔧 [MODIFY USER] Field changes:", {
-      oldValues,
-      newValues: {
-        name: user.name,
-        selfIntro: user.selfIntro,
-        gender: user.gender,
-        bio: user.bio,
-        dob: user.dob,
-        age: user.age,
-        countryFlagImage: user.countryFlagImage,
-        country: user.country,
-        image: user.image
-      }
-    });
+    if (!updatedUser) {
+      console.log("❌ [MODIFY USER] Failed to update user");
+      if (req.file) deleteFile(req.file);
+      return res.status(500).json({ status: false, message: "Failed to update user profile" });
+    }
 
-    // Save to database
-    console.log("💾 [MODIFY USER] Saving user to database...");
-    await user.save();
-    console.log("✅ [MODIFY USER] User saved successfully");
+    console.log("✅ [MODIFY USER] User updated successfully:", updatedUser);
 
-    // ✅ NOW send the response with updated data
-    const responseData = {
+    // ✅ Send response (SAME AS ADMIN FORMAT)
+    return res.status(200).json({
       status: true,
       message: "The user's profile has been modified.",
-      user: {
-        _id: user._id,
-        name: user.name,
-        image: user.image,
-        gender: user.gender,
-        bio: user.bio,
-        dob: user.dob,
-        age: user.age,
-        countryFlagImage: user.countryFlagImage,
-        country: user.country,
-        selfIntro: user.selfIntro
-      }
-    };
-
-    console.log("📤 [MODIFY USER] Sending response:", responseData);
-    res.status(200).json(responseData);
+      data: updatedUser, // Using 'data' like admin, not 'user'
+    });
 
   } catch (error) {
     console.error("❌ [MODIFY USER] Error in modifyUserProfile:", error);
@@ -331,22 +297,48 @@ exports.modifyUserProfile = async (req, res) => {
 //get user profile
 exports.retrieveUserProfile = async (req, res) => {
   try {
+    console.log("🔍 [GET USER] Retrieving user profile...");
+    
     if (!req.user || !req.user.userId) {
+      console.log("❌ [GET USER] Unauthorized access - no user ID");
       return res.status(401).json({ status: false, message: "Unauthorized access. Invalid token." });
     }
 
     const userId = new mongoose.Types.ObjectId(req.user.userId);
-    const user = await User.findOne({ _id: userId }).lean();
+    console.log("🔍 [GET USER] User ID:", userId);
+    
+    const user = await User.findById(userId).select("name email image selfIntro gender bio dob age countryFlagImage country coin spentCoins rechargedCoins isOnline isVip vipPlanId vipPlanStartDate vipPlanEndDate").lean();
 
-    res.status(200).json({ status: true, message: "The user has retrieved their profile.", user: user });
-
-    if (user.isVip && user.vipPlanId !== null && user.vipPlanStartDate !== null && user.vipPlanEndDate !== null) {
-      const validity = user.vipPlan.validity;
-      const validityType = user.vipPlan.validityType;
-      validatePlanExpiration(user, validity, validityType);
+    if (!user) {
+      console.log("❌ [GET USER] User not found");
+      return res.status(404).json({ status: false, message: "User not found." });
     }
+
+    console.log("✅ [GET USER] User found:", {
+      _id: user._id,
+      name: user.name,
+      image: user.image,
+      email: user.email
+    });
+
+    // ✅ Send response (SAME AS ADMIN FORMAT)
+    res.status(200).json({ 
+      status: true, 
+      message: "The user has retrieved their profile.", 
+      data: user // Using 'data' key for consistency
+    });
+
+    // Handle VIP plan validation in background
+    if (user.isVip && user.vipPlanId !== null && user.vipPlanStartDate !== null && user.vipPlanEndDate !== null) {
+      const validity = user.vipPlan?.validity;
+      const validityType = user.vipPlan?.validityType;
+      if (validity && validityType) {
+        validatePlanExpiration(user, validity, validityType);
+      }
+    }
+
   } catch (error) {
-    console.log(error);
+    console.error("❌ [GET USER] Error:", error);
     return res.status(500).json({ status: false, error: error.message || "Internal Server Error" });
   }
 };
