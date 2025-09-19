@@ -1,45 +1,31 @@
 const User = require("../models/user.model");
 const Host = require("../models/host.model");
-const crypto = require('crypto');
+const crypto = require('crypto'); // ✅ Add this import
 
 
 const generateUniqueId = async () => {
-  try {
-    let uniqueId = "";
-    let idExists = true;
-    let attempts = 0;
-    const maxAttempts = 10; // Prevent infinite loops
+  const characters = "0123456789876543210";
+  let uniqueId = "";
+  const length = 8;
 
-    while (idExists && attempts < maxAttempts) {
-      attempts++;
-      
-      // Generate a more secure 8-digit unique ID
-      uniqueId = crypto.randomInt(10000000, 99999999).toString();
-
-      // Check if this ID already exists in User or Host collections
-      const [user, host] = await Promise.all([
-        User.findOne({ uniqueId }).select("_id").lean(),
-        Host.findOne({ uniqueId }).select("_id").lean()
-      ]);
-
-      const existingDoc = user || host;
-
-      if (!existingDoc) {
-        idExists = false;
-      }
+  let idExists = true;
+  while (idExists) {
+    uniqueId = "";
+    for (let i = 0; i < length; i++) {
+      const randomIndex = Math.floor(Math.random() * characters.length);
+      uniqueId += characters[randomIndex];
     }
 
-    if (idExists) {
-      // Fallback if we can't generate unique ID
-      uniqueId = `${Date.now().toString().slice(-8)}`;
-    }
+    const [user, host] = await Promise.all([User.findOne({ uniqueId }), Host.findOne({ uniqueId })]);
 
-    return uniqueId;
-  } catch (error) {
-    console.error("❌ Error generating unique ID:", error);
-    // Fallback method
-    return Date.now().toString().slice(-8);
+    const existingDoc = user || host;
+
+    if (!existingDoc) {
+      idExists = false;
+    }
   }
+
+  return uniqueId;
 };
 
 module.exports = generateUniqueId;
