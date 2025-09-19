@@ -15,10 +15,14 @@ services:
       - EMAIL=EMAIL
       - MongoDb_Connection_String=${MONGODB_CONNECTION_STRING}
     volumes:
-      - ./backend/storage:/app/storage
+      - ./backend/storage:/app/storage  # ✅ Make sure this volume mapping is correct
+      - figgy-storage:/app/storage      # ✅ Or use a named volume
     restart: unless-stopped
     networks:
       - figgy-network
+
+volumes:
+  figgy-storage:  # ✅ Add named volume for persistent storage
 
 networks:
   figgy-network:

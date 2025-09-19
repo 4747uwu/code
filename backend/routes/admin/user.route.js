@@ -17,4 +17,5 @@ route.patch("/modifyUserBlockStatus", checkAccessWithSecretKey(), UserController
 //get user's profile
 route.get("/fetchUserProfile", checkAccessWithSecretKey(), UserController.fetchUserProfile);
 
+
 module.exports = route;

@@ -86,18 +86,6 @@ global.updateSettingFile = (settingData) => {
   }
 };
 
-// ✅ IMPORTANT: Add static file serving for storage
-app.use('/storage', express.static(path.join(__dirname, 'storage')));
-
-// Add some debug logging for storage requests
-app.use('/storage', (req, res, next) => {
-  const filePath = path.join(__dirname, 'storage', req.path);
-  console.log(`📁 Storage request: ${req.path}`);
-  console.log(`📂 Full path: ${filePath}`);
-  console.log(`📋 File exists: ${fs.existsSync(filePath)}`);
-  next();
-});
-
 app.get("/api/health", (req, res) => {
   res.status(200).json({ 
     status: "OK", 
@@ -113,6 +101,9 @@ app.use("/api", route);
 
 // Socket.io connection handling
 require("./socket");
+
+// Static files
+app.use(express.static(path.join(__dirname, "storage")));
 
 // Default route
 app.get("/", (req, res) => {
