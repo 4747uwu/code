@@ -208,18 +208,31 @@ exports.retrieveUserProfile = async (req, res) => {
       email: user.email
     });
 
-    // ✅ CRITICAL FIX: Convert relative image path to full URL
-    let imageUrl = user.image || "";
-    if (imageUrl && !imageUrl.startsWith('http') && !imageUrl.startsWith('https://')) {
-      // Construct full URL like admin panel does
-      const baseUrl = `${req.protocol}://${req.get('host')}/`;
-      imageUrl = baseUrl + imageUrl;
-    }
+    // ✅ FIXED: Get the correct base URL for your setup
+const getImageUrl = (imagePath, req) => {
+  if (!imagePath) return "";
+  
+  if (imagePath.startsWith('http') || imagePath.startsWith('https://')) {
+    return imagePath; // Already a full URL
+  }
+  
+  // ✅ Use your actual server URL - adjust this to match your setup
+  const baseUrl = process.env.NODE_ENV === 'production' 
+    ? 'http://api.boomxx.com/'  // Your production domain
+    : `${req.protocol}://${req.get('host')}/`; // Local development
+  
+  return baseUrl + imagePath;
+};
 
-    console.log("🖼️ [GET USER] Image URL processed:", {
-      originalPath: user.image,
-      fullImageUrl: imageUrl
-    });
+// ✅ Use the helper function
+const imageUrl = getImageUrl(user.image, req);
+
+console.log("🖼️ [GET USER] Image URL processed:", {
+  originalPath: user.image,
+  fullImageUrl: imageUrl,
+  environment: process.env.NODE_ENV,
+  host: req.get('host')
+});
 
     // ✅ Consistent response format matching Flutter FetchLoginUserProfileModel
     const responseData = {
@@ -357,17 +370,31 @@ exports.modifyUserProfile = async (req, res) => {
     await user.save();
     console.log("✅ [MODIFY USER] User saved successfully");
 
-    // ✅ CRITICAL FIX: Convert relative image path to full URL for response
-    let imageUrl = user.image || "";
-    if (imageUrl && !imageUrl.startsWith('http') && !imageUrl.startsWith('https://')) {
-      const baseUrl = `${req.protocol}://${req.get('host')}/`;
-      imageUrl = baseUrl + imageUrl;
-    }
+    // ✅ FIXED: Get the correct base URL for your setup
+const getImageUrl = (imagePath, req) => {
+  if (!imagePath) return "";
+  
+  if (imagePath.startsWith('http') || imagePath.startsWith('https://')) {
+    return imagePath; // Already a full URL
+  }
+  
+  // ✅ Use your actual server URL - adjust this to match your setup
+  const baseUrl = process.env.NODE_ENV === 'production' 
+    ? 'http://api.boomxx.com/'  // Your production domain
+    : `${req.protocol}://${req.get('host')}/`; // Local development
+  
+  return baseUrl + imagePath;
+};
 
-    console.log("🖼️ [MODIFY USER] Image URL for response:", {
-      originalPath: user.image,
-      fullImageUrl: imageUrl
-    });
+// ✅ Use the helper function
+const imageUrl = getImageUrl(user.image, req);
+
+console.log("🖼️ [MODIFY USER] Image URL for response:", {
+  originalPath: user.image,
+  fullImageUrl: imageUrl,
+  environment: process.env.NODE_ENV,
+  host: req.get('host')
+});
 
     // ✅ Format response to match Flutter expectations
     const responseData = {
