@@ -93,7 +93,7 @@ io.on("connection", async (socket) => {
   }
 
   //chat
-socket.on("chatMessageSent", async (data) => {
+socket.on("messageSent", async (data) => {
   console.log("🔹 Raw data received:", data);
   
   const parseData = JSON.parse(data);
@@ -114,7 +114,7 @@ socket.on("chatMessageSent", async (data) => {
 
     if (parseData?.receiverRole === "host") {
       console.log("🔍 Looking up receiver as host:", parseData?.receiverId);
-      receiverPromise = Host.findById(parseData?.receiverId).lean().select("_id name image fcmToken isBlock coin chatRate agencyId");
+      receiverPromise = Host.findById(parseData?.receiverId).lean().select("_id name image fcmToken isBlock coin agencyId");
     } else if (parseData?.receiverRole === "user") {
       console.log("🔍 Looking up receiver as user:", parseData?.receiverId);
       receiverPromise = User.findById(parseData?.receiverId).lean().select("_id name image fcmToken isBlock coin");
@@ -530,7 +530,7 @@ socket.on("chatMessageSent", async (data) => {
     }
   });
 
-  socket.on("chatMessageSeen", async (data) => {
+  socket.on("messageSeen", async (data) => {
     try {
       const parsedData = JSON.parse(data);
       console.log("🔹 Data in chatMessageSeen event:", parsedData);
