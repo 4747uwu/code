@@ -335,92 +335,52 @@ exports.retrieveUserProfile = async (req, res) => {
       email: user.email
     });
 
-    // ✅ Format response for Flutter
+    // ✅ Consistent response format matching Flutter FetchLoginUserProfileModel
     const responseData = {
       status: true,
-      message: "The user has retrieved their profile.",
+      message: "User profile retrieved successfully.",
       user: {
         _id: user._id,
         name: user.name || "",
-        email: user.email || "",
-        image: user.image || "",
         selfIntro: user.selfIntro || "",
         gender: user.gender || "",
         bio: user.bio || "",
-        dob: user.dob || "",
         age: user.age || 18,
+        image: user.image || "",
+        email: user.email || "",
         countryFlagImage: user.countryFlagImage || "",
         country: user.country || "",
+        ipAddress: user.ipAddress || "",
+        identity: user.identity || "",
+        fcmToken: user.fcmToken || "",
+        uniqueId: user.uniqueId || "",
+        firebaseUid: user.firebaseUid || "",
+        provider: user.provider || "",
         coin: user.coin || 0,
         spentCoins: user.spentCoins || 0,
         rechargedCoins: user.rechargedCoins || 0,
-        isOnline: user.isOnline || false,
+        earnedCoins: user.earnedCoins || 0,
+        totalGifts: user.totalGifts || 0,
+        redeemedCoins: user.redeemedCoins || 0,
+        redeemedAmount: user.redeemedAmount || 0,
         isVip: user.isVip || false,
-        vipPlanId: user.vipPlanId || null,
-        vipPlanStartDate: user.vipPlanStartDate || null,
-        vipPlanEndDate: user.vipPlanEndDate || null,
-        // ✅ Add fields that might be missing
-        loginType: user.loginType || 3,
-        fcmToken: user.fcmToken || "",
+        isBlock: user.isBlock || false,
+        isFake: user.isFake || false,
+        isOnline: user.isOnline || false,
+        isBusy: user.isBusy || false,
+        callId: user.callId || "",
         isHost: user.isHost || false,
         hostId: user.hostId || null,
-        isBlock: user.isBlock || false,
-        uniqueId: user.uniqueId || ""
+        lastlogin: user.lastlogin || "",
+        date: user.date || "",
+        loginType: user.loginType || 3
       }
     };
 
     res.status(200).json(responseData);
 
     // Handle VIP plan validation in background
-    if (user.isVip && user.vipPlanId !== null && user.vipPlanStartDate !== null && user.vipPlanEndDate !== null) {
-      const validity = user.vipPlan?.validity;
-      const validityType = user.vipPlan?.validityType;
-      if (validity && validityType) {
-        validatePlanExpiration(user, validity, validityType);
-      }
-    }
-
-  } catch (error) {
-    console.error("❌ [GET USER] Error:", error);
-    return res.status(500).json({ status: false, error: error.message || "Internal Server Error" });
-  }
-};
-//get user profile
-exports.retrieveUserProfile = async (req, res) => {
-  try {
-    console.log("🔍 [GET USER] Retrieving user profile...");
-    
-    if (!req.user || !req.user.userId) {
-      console.log("❌ [GET USER] Unauthorized access - no user ID");
-      return res.status(401).json({ status: false, message: "Unauthorized access. Invalid token." });
-    }
-
-    const userId = new mongoose.Types.ObjectId(req.user.userId);
-    console.log("🔍 [GET USER] User ID:", userId);
-    
-    const user = await User.findById(userId).select("name email image selfIntro gender bio dob age countryFlagImage country coin spentCoins rechargedCoins isOnline isVip vipPlanId vipPlanStartDate vipPlanEndDate").lean();
-
-    if (!user) {
-      console.log("❌ [GET USER] User not found");
-      return res.status(404).json({ status: false, message: "User not found." });
-    }
-
-    console.log("✅ [GET USER] User found:", {
-      _id: user._id,
-      name: user.name,
-      image: user.image,
-      email: user.email
-    });
-
-    // ✅ Send response (SAME AS ADMIN FORMAT)
-    res.status(200).json({ 
-      status: true, 
-      message: "The user has retrieved their profile.", 
-      data: user // Using 'data' key for consistency
-    });
-
-    // Handle VIP plan validation in background
-    if (user.isVip && user.vipPlanId !== null && user.vipPlanStartDate !== null && user.vipPlanEndDate !== null) {
+    if (user.isVip && user.vipPlanId && user.vipPlanStartDate && user.vipPlanEndDate) {
       const validity = user.vipPlan?.validity;
       const validityType = user.vipPlan?.validityType;
       if (validity && validityType) {
