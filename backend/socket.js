@@ -29,6 +29,13 @@ const moment = require("moment-timezone");
 //agora-access-token
 const { RtcTokenBuilder, RtcRole } = require("agora-access-token");
 
+const agoraSettings = {
+  agoraAppId: "3b4fe627b863435eaa54175cd133eeba",
+  agoraAppCertificate: "4988588782c64770b4ab32ca6bae215b",
+  adminCommissionRate: 10,
+  maxFreeChatMessages: 10,
+};
+
 io.on("connection", async (socket) => {
   console.log("Socket Connection done Client ID: ", socket.id);
 
@@ -94,7 +101,9 @@ io.on("connection", async (socket) => {
 
     if (parseData?.messageType == 1) {
       if (parseData.senderRole === "user" && parseData.receiverRole === "host") {
-        let maxFreeChatMessages = settingJSON.maxFreeChatMessages || 10;
+        let maxFreeChatMessages = agoraSettings.maxFreeChatMessages;
+
+        console.log("💬 [SOCKET CHAT] Using hardcoded maxFreeChatMessages:", maxFreeChatMessages);
 
         //Check if sender is VIP
         if (sender?.isVip) {
