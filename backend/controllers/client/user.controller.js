@@ -181,6 +181,105 @@ exports.signInOrSignUpUser = async (req, res) => {
   }
 };
 
+//get user profile
+exports.retrieveUserProfile = async (req, res) => {
+  try {
+    console.log("🔍 [GET USER] Retrieving user profile...");
+    
+    if (!req.user || !req.user.userId) {
+      console.log("❌ [GET USER] Unauthorized access - no user ID");
+      return res.status(401).json({ status: false, message: "Unauthorized access. Invalid token." });
+    }
+
+    const userId = new mongoose.Types.ObjectId(req.user.userId);
+    console.log("🔍 [GET USER] User ID:", userId);
+    
+    const user = await User.findById(userId).lean();
+
+    if (!user) {
+      console.log("❌ [GET USER] User not found");
+      return res.status(404).json({ status: false, message: "User not found." });
+    }
+
+    console.log("✅ [GET USER] User found:", {
+      _id: user._id,
+      name: user.name,
+      image: user.image,
+      email: user.email
+    });
+
+    // ✅ CRITICAL FIX: Convert relative image path to full URL
+    let imageUrl = user.image || "";
+    if (imageUrl && !imageUrl.startsWith('http') && !imageUrl.startsWith('https://')) {
+      // Construct full URL like admin panel does
+      const baseUrl = `${req.protocol}://${req.get('host')}/`;
+      imageUrl = baseUrl + imageUrl;
+    }
+
+    console.log("🖼️ [GET USER] Image URL processed:", {
+      originalPath: user.image,
+      fullImageUrl: imageUrl
+    });
+
+    // ✅ Consistent response format matching Flutter FetchLoginUserProfileModel
+    const responseData = {
+      status: true,
+      message: "User profile retrieved successfully.",
+      user: {
+        _id: user._id,
+        name: user.name || "",
+        selfIntro: user.selfIntro || "",
+        gender: user.gender || "",
+        bio: user.bio || "",
+        age: user.age || 18,
+        image: imageUrl, // ✅ Now sending full URL instead of relative path
+        email: user.email || "",
+        countryFlagImage: user.countryFlagImage || "",
+        country: user.country || "",
+        ipAddress: user.ipAddress || "",
+        identity: user.identity || "",
+        fcmToken: user.fcmToken || "",
+        uniqueId: user.uniqueId || "",
+        firebaseUid: user.firebaseUid || "",
+        provider: user.provider || "",
+        coin: user.coin || 0,
+        spentCoins: user.spentCoins || 0,
+        rechargedCoins: user.rechargedCoins || 0,
+        earnedCoins: user.earnedCoins || 0,
+        totalGifts: user.totalGifts || 0,
+        redeemedCoins: user.redeemedCoins || 0,
+        redeemedAmount: user.redeemedAmount || 0,
+        isVip: user.isVip || false,
+        isBlock: user.isBlock || false,
+        isFake: user.isFake || false,
+        isOnline: user.isOnline || false,
+        isBusy: user.isBusy || false,
+        callId: user.callId || "",
+        isHost: user.isHost || false,
+        hostId: user.hostId || null,
+        lastlogin: user.lastlogin || "",
+        date: user.date || "",
+        loginType: user.loginType || 3
+      }
+    };
+
+    res.status(200).json(responseData);
+
+    // Handle VIP plan validation in background
+    if (user.isVip && user.vipPlanId && user.vipPlanStartDate && user.vipPlanEndDate) {
+      const validity = user.vipPlan?.validity;
+      const validityType = user.vipPlan?.validityType;
+      if (validity && validityType) {
+        validatePlanExpiration(user, validity, validityType);
+      }
+    }
+
+  } catch (error) {
+    console.error("❌ [GET USER] Error:", error);
+    return res.status(500).json({ status: false, error: error.message || "Internal Server Error" });
+  }
+};
+
 //update profile of the user
 exports.modifyUserProfile = async (req, res) => {
   try {
@@ -258,6 +357,18 @@ exports.modifyUserProfile = async (req, res) => {
     await user.save();
     console.log("✅ [MODIFY USER] User saved successfully");
 
+    // ✅ CRITICAL FIX: Convert relative image path to full URL for response
+    let imageUrl = user.image || "";
+    if (imageUrl && !imageUrl.startsWith('http') && !imageUrl.startsWith('https://')) {
+      const baseUrl = `${req.protocol}://${req.get('host')}/`;
+      imageUrl = baseUrl + imageUrl;
+    }
+
+    console.log("🖼️ [MODIFY USER] Image URL for response:", {
+      originalPath: user.image,
+      fullImageUrl: imageUrl
+    });
+
     // ✅ Format response to match Flutter expectations
     const responseData = {
       status: true,
@@ -266,7 +377,7 @@ exports.modifyUserProfile = async (req, res) => {
         _id: user._id,
         name: user.name,
         email: user.email || "",
-        image: user.image,
+        image: imageUrl, // ✅ Now sending full URL instead of relative path
         selfIntro: user.selfIntro || "",
         gender: user.gender || "",
         bio: user.bio || "",
@@ -291,7 +402,7 @@ exports.modifyUserProfile = async (req, res) => {
       userData: {
         _id: responseData.user._id,
         name: responseData.user.name,
-        image: responseData.user.image,
+        image: responseData.user.image, // This should now be a full URL
         updatedFields: Object.keys(req.body)
       }
     });
@@ -304,92 +415,6 @@ exports.modifyUserProfile = async (req, res) => {
       console.log("🗑️ [MODIFY USER] Deleting uploaded file due to error");
       deleteFile(req.file);
     }
-    return res.status(500).json({ status: false, error: error.message || "Internal Server Error" });
-  }
-};
-
-//get user profile
-exports.retrieveUserProfile = async (req, res) => {
-  try {
-    console.log("🔍 [GET USER] Retrieving user profile...");
-    
-    if (!req.user || !req.user.userId) {
-      console.log("❌ [GET USER] Unauthorized access - no user ID");
-      return res.status(401).json({ status: false, message: "Unauthorized access. Invalid token." });
-    }
-
-    const userId = new mongoose.Types.ObjectId(req.user.userId);
-    console.log("🔍 [GET USER] User ID:", userId);
-    
-    const user = await User.findById(userId).lean();
-
-    if (!user) {
-      console.log("❌ [GET USER] User not found");
-      return res.status(404).json({ status: false, message: "User not found." });
-    }
-
-    console.log("✅ [GET USER] User found:", {
-      _id: user._id,
-      name: user.name,
-      image: user.image,
-      email: user.email
-    });
-
-    // ✅ Consistent response format matching Flutter FetchLoginUserProfileModel
-    const responseData = {
-      status: true,
-      message: "User profile retrieved successfully.",
-      user: {
-        _id: user._id,
-        name: user.name || "",
-        selfIntro: user.selfIntro || "",
-        gender: user.gender || "",
-        bio: user.bio || "",
-        age: user.age || 18,
-        image: user.image || "",
-        email: user.email || "",
-        countryFlagImage: user.countryFlagImage || "",
-        country: user.country || "",
-        ipAddress: user.ipAddress || "",
-        identity: user.identity || "",
-        fcmToken: user.fcmToken || "",
-        uniqueId: user.uniqueId || "",
-        firebaseUid: user.firebaseUid || "",
-        provider: user.provider || "",
-        coin: user.coin || 0,
-        spentCoins: user.spentCoins || 0,
-        rechargedCoins: user.rechargedCoins || 0,
-        earnedCoins: user.earnedCoins || 0,
-        totalGifts: user.totalGifts || 0,
-        redeemedCoins: user.redeemedCoins || 0,
-        redeemedAmount: user.redeemedAmount || 0,
-        isVip: user.isVip || false,
-        isBlock: user.isBlock || false,
-        isFake: user.isFake || false,
-        isOnline: user.isOnline || false,
-        isBusy: user.isBusy || false,
-        callId: user.callId || "",
-        isHost: user.isHost || false,
-        hostId: user.hostId || null,
-        lastlogin: user.lastlogin || "",
-        date: user.date || "",
-        loginType: user.loginType || 3
-      }
-    };
-
-    res.status(200).json(responseData);
-
-    // Handle VIP plan validation in background
-    if (user.isVip && user.vipPlanId && user.vipPlanStartDate && user.vipPlanEndDate) {
-      const validity = user.vipPlan?.validity;
-      const validityType = user.vipPlan?.validityType;
-      if (validity && validityType) {
-        validatePlanExpiration(user, validity, validityType);
-      }
-    }
-
-  } catch (error) {
-    console.error("❌ [GET USER] Error:", error);
     return res.status(500).json({ status: false, error: error.message || "Internal Server Error" });
   }
 };
