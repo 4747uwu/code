@@ -202,7 +202,7 @@ exports.modifyUserProfile = async (req, res) => {
     const userId = new mongoose.Types.ObjectId(req.user.userId);
     console.log("🔧 [MODIFY USER] User ID:", userId);
 
-    const user = await User.findById(userId).select("name email image selfIntro gender bio dob age countryFlagImage country");
+    const user = await User.findById(userId);
     
     if (!user) {
       console.log("❌ [MODIFY USER] User not found in database");
@@ -217,26 +217,13 @@ exports.modifyUserProfile = async (req, res) => {
       gender: user.gender
     });
 
-    // ✅ Update fields (same as admin approach)
-    const updateFields = {
-      name: req.body?.name || user.name,
-      selfIntro: req.body?.selfIntro || user.selfIntro,
-      gender: req.body?.gender ? req.body.gender.toLowerCase().trim() : user.gender,
-      bio: req.body?.bio || user.bio,
-      dob: req.body?.dob ? req.body.dob.trim() : user.dob,
-      age: req.body?.age || user.age,
-      countryFlagImage: req.body?.countryFlagImage || user.countryFlagImage,
-      country: req.body?.country ? req.body.country.toLowerCase().trim() : user.country,
-    };
-
-    // ✅ Handle image upload (EXACTLY like admin)
+    // ✅ Handle image upload first
     if (req.file) {
       console.log("📁 [MODIFY USER] Processing file upload...");
       console.log("📁 [MODIFY USER] New file path:", req.file.path);
       
-      // Delete old image if exists (SAME AS ADMIN)
-      if (user.image) {
-        console.log("🗑️ [MODIFY USER] Current image path:", user.image);
+      // Delete old image if exists
+      if (user.image && user.image.includes('storage/')) {
         const imagePath = user.image.includes("storage") ? "storage" + user.image.split("storage")[1] : "";
         if (imagePath && fs.existsSync(imagePath)) {
           const imageName = imagePath.split("/").pop();
@@ -247,42 +234,69 @@ exports.modifyUserProfile = async (req, res) => {
             } catch (deleteError) {
               console.error("❌ [MODIFY USER] Error deleting old image:", deleteError);
             }
-          } else {
-            console.log("🔒 [MODIFY USER] Skipping deletion of default image:", imageName);
           }
-        } else {
-          console.log("⚠️ [MODIFY USER] Old image file doesn't exist:", imagePath);
         }
       }
       
-      // Set new image path (EXACTLY like admin)
-      updateFields.image = req.file.path;
-      console.log("📁 [MODIFY USER] Updated image path:", updateFields.image);
+      user.image = req.file.path;
+      console.log("📁 [MODIFY USER] Updated image path:", user.image);
     }
 
-    console.log("🔧 [MODIFY USER] Update fields:", updateFields);
+    // ✅ Update other fields
+    user.name = req.body?.name || user.name;
+    user.selfIntro = req.body?.selfIntro || user.selfIntro;
+    user.gender = req.body?.gender ? req.body.gender.toLowerCase().trim() : user.gender;
+    user.bio = req.body?.bio || user.bio;
+    user.dob = req.body?.dob ? req.body.dob.trim() : user.dob;
+    user.age = req.body?.age || user.age;
+    user.countryFlagImage = req.body?.countryFlagImage || user.countryFlagImage;
+    user.country = req.body?.country ? req.body.country.toLowerCase().trim() : user.country;
 
-    // ✅ Update user (SAME AS ADMIN)
-    const updatedUser = await User.findByIdAndUpdate(
-      userId, 
-      updateFields, 
-      { new: true, select: "name email image selfIntro gender bio dob age countryFlagImage country" }
-    ).lean();
+    console.log("🔧 [MODIFY USER] About to save user with updates...");
 
-    if (!updatedUser) {
-      console.log("❌ [MODIFY USER] Failed to update user");
-      if (req.file) deleteFile(req.file);
-      return res.status(500).json({ status: false, message: "Failed to update user profile" });
-    }
+    // ✅ Save the user
+    await user.save();
+    console.log("✅ [MODIFY USER] User saved successfully");
 
-    console.log("✅ [MODIFY USER] User updated successfully:", updatedUser);
-
-    // ✅ Send response (SAME AS ADMIN FORMAT)
-    return res.status(200).json({
+    // ✅ Format response to match Flutter expectations
+    const responseData = {
       status: true,
       message: "The user's profile has been modified.",
-      data: updatedUser, // Using 'data' like admin, not 'user'
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email || "",
+        image: user.image,
+        selfIntro: user.selfIntro || "",
+        gender: user.gender || "",
+        bio: user.bio || "",
+        dob: user.dob || "",
+        age: user.age || 18,
+        countryFlagImage: user.countryFlagImage || "",
+        country: user.country || "",
+        coin: user.coin || 0,
+        spentCoins: user.spentCoins || 0,
+        rechargedCoins: user.rechargedCoins || 0,
+        isOnline: user.isOnline || false,
+        isVip: user.isVip || false,
+        vipPlanId: user.vipPlanId || null,
+        vipPlanStartDate: user.vipPlanStartDate || null,
+        vipPlanEndDate: user.vipPlanEndDate || null
+      }
+    };
+
+    console.log("📤 [MODIFY USER] Sending response:", {
+      status: responseData.status,
+      message: responseData.message,
+      userData: {
+        _id: responseData.user._id,
+        name: responseData.user.name,
+        image: responseData.user.image,
+        updatedFields: Object.keys(req.body)
+      }
     });
+
+    return res.status(200).json(responseData);
 
   } catch (error) {
     console.error("❌ [MODIFY USER] Error in modifyUserProfile:", error);
@@ -294,6 +308,83 @@ exports.modifyUserProfile = async (req, res) => {
   }
 };
 
+//get user profile
+exports.retrieveUserProfile = async (req, res) => {
+  try {
+    console.log("🔍 [GET USER] Retrieving user profile...");
+    
+    if (!req.user || !req.user.userId) {
+      console.log("❌ [GET USER] Unauthorized access - no user ID");
+      return res.status(401).json({ status: false, message: "Unauthorized access. Invalid token." });
+    }
+
+    const userId = new mongoose.Types.ObjectId(req.user.userId);
+    console.log("🔍 [GET USER] User ID:", userId);
+    
+    const user = await User.findById(userId).lean();
+
+    if (!user) {
+      console.log("❌ [GET USER] User not found");
+      return res.status(404).json({ status: false, message: "User not found." });
+    }
+
+    console.log("✅ [GET USER] User found:", {
+      _id: user._id,
+      name: user.name,
+      image: user.image,
+      email: user.email
+    });
+
+    // ✅ Format response for Flutter
+    const responseData = {
+      status: true,
+      message: "The user has retrieved their profile.",
+      user: {
+        _id: user._id,
+        name: user.name || "",
+        email: user.email || "",
+        image: user.image || "",
+        selfIntro: user.selfIntro || "",
+        gender: user.gender || "",
+        bio: user.bio || "",
+        dob: user.dob || "",
+        age: user.age || 18,
+        countryFlagImage: user.countryFlagImage || "",
+        country: user.country || "",
+        coin: user.coin || 0,
+        spentCoins: user.spentCoins || 0,
+        rechargedCoins: user.rechargedCoins || 0,
+        isOnline: user.isOnline || false,
+        isVip: user.isVip || false,
+        vipPlanId: user.vipPlanId || null,
+        vipPlanStartDate: user.vipPlanStartDate || null,
+        vipPlanEndDate: user.vipPlanEndDate || null,
+        // ✅ Add fields that might be missing
+        loginType: user.loginType || 3,
+        fcmToken: user.fcmToken || "",
+        isHost: user.isHost || false,
+        hostId: user.hostId || null,
+        isBlock: user.isBlock || false,
+        uniqueId: user.uniqueId || ""
+      }
+    };
+
+    res.status(200).json(responseData);
+
+    // Handle VIP plan validation in background
+    if (user.isVip && user.vipPlanId !== null && user.vipPlanStartDate !== null && user.vipPlanEndDate !== null) {
+      const validity = user.vipPlan?.validity;
+      const validityType = user.vipPlan?.validityType;
+      if (validity && validityType) {
+        validatePlanExpiration(user, validity, validityType);
+      }
+    }
+
+  } catch (error) {
+    console.error("❌ [GET USER] Error:", error);
+    return res.status(500).json({ status: false, error: error.message || "Internal Server Error" });
+  }
+};
 //get user profile
 exports.retrieveUserProfile = async (req, res) => {
   try {
