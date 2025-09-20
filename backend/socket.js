@@ -37,9 +37,17 @@ const agoraSettings = {
 };
 
 io.on("connection", async (socket) => {
-  console.log("Socket Connection done Client ID: ", socket.id);
-
+  console.log("✅ Socket Connection done Client ID: ", socket.id);
+  
+  // ADD THIS DEBUG LOG
   const { globalRoom } = socket.handshake.query;
+  console.log("🔍 DEBUG: globalRoom received:", globalRoom);
+  
+  if (!globalRoom) {
+    console.error("❌ No globalRoom provided in handshake");
+    return;
+  }
+
   const id = globalRoom.split(":")[1];
   if (!id || !mongoose.Types.ObjectId.isValid(id)) {
     console.warn("Invalid or missing ID from globalRoom:", globalRoom);
@@ -72,10 +80,14 @@ io.on("connection", async (socket) => {
   }
 
   //chat
-  socket.on("chatMessageSent", async (data) => {
-    const parseData = JSON.parse(data);
-    console.log("🔹 Data in chatMessageSent:", parseData);
-
+socket.on("chatMessageSent", async (data) => {
+  console.log("🔹 Raw data received:", data);
+  
+  const parseData = JSON.parse(data);
+  console.log("🔹 Parsed data:", parseData);
+  console.log("🔹 Message type:", parseData?.messageType);
+  console.log("🔹 Sender role:", parseData?.senderRole);
+  console.log("🔹 Receiver role:", parseData?.receiverRole);
     let senderPromise, receiverPromise;
 
     if (parseData?.senderRole === "user") {
@@ -1140,7 +1152,7 @@ io.on("connection", async (socket) => {
 
       const [caller, receiver, callHistory, vipPrivilege] = await Promise.all([
         User.findById(callerId).select("_id coin").lean(),
-        Host.findById(receiverId).select("_id coin privateCallRate audioCallRate randomCallRate randomCallFemaleRate randomCallMaleRate agencyId").lean(),
+        Host.findById(receiverId).select("_id coin privateCallRate audioCallRate randomCallFemaleRate randomCallMaleRate agencyId").lean(),
         History.findById(callId).select("_id callType isPrivate").lean(),
         VipPlanPrivilege.findOne().select("audioCallDiscount privateCallDiscount").lean(),
       ]);

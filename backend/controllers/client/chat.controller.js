@@ -570,3 +570,4 @@ exports.retrieveChatHistory = async (req, res) => {
     return res.status(500).json({ status: false, error: error.message || "Internal Server Error" });
   }
 };
+
