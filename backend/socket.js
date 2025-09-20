@@ -41,17 +41,24 @@ console.log("🔧 Agora Settings Initialized:", agoraSettings);
 io.on("connection", async (socket) => {
   console.log("✅ Socket Connection done Client ID: ", socket.id);
   
-  // ADD THIS DEBUG LOG
   const { globalRoom } = socket.handshake.query;
   console.log("🔍 DEBUG: globalRoom received:", globalRoom);
-  console.log("🔍 DEBUG: Full handshake query:", socket.handshake.query);
   
   if (!globalRoom) {
     console.error("❌ No globalRoom provided in handshake");
     return;
   }
 
-  const id = globalRoom.split(":")[1];
+  // ✅ FIXED: Handle both formats
+  let id;
+  if (globalRoom.startsWith("globalRoom:")) {
+    // Handle format: "globalRoom:68ce949eecaca3d8cb112071"
+    id = globalRoom.split(":")[1];
+  } else {
+    // Handle format: "user:68ce949eecaca3d8cb112071" or "host:68cdf571ab6a50c54b1ea5c8"
+    id = globalRoom.split(":")[1];
+  }
+  
   console.log("🔍 DEBUG: Extracted ID from globalRoom:", id);
   
   if (!id || !mongoose.Types.ObjectId.isValid(id)) {
@@ -196,8 +203,8 @@ socket.on("messageSent", async (data) => {
       };
 
       console.log("📤 Emitting chat message to rooms");
-      io.in("globalRoom:" + chatTopic?.senderId?.toString()).emit("chatMessageSent", eventData);
-      io.in("globalRoom:" + chatTopic?.receiverId?.toString()).emit("chatMessageSent", eventData);
+      io.in("globalRoom:" + chatTopic?.senderId?.toString()).emit("messageSent", eventData);  // ✅ Changed from "chatMessageSent"
+      io.in("globalRoom:" + chatTopic?.receiverId?.toString()).emit("messageSent", eventData);  // ✅ Changed from "chatMessageSent"
 
       if (parseData.senderRole === "user" && parseData.receiverRole === "host") {
         console.log("💰 Processing coin deduction for user-to-host message");
@@ -1828,7 +1835,7 @@ socket.on("messageSent", async (data) => {
       socket.join(liveHistoryId.toString());
       console.log(`[liveJoinerCount] joined room: ${liveHistoryId}`);
     } else {
-      console.log(`[liveJoinerCount] User is already in room: ${liveHistoryId}`);
+           console.log(`[liveJoinerCount] User is already in room: ${liveHistoryId}`);
     }
 
     if (!existLiveView) {

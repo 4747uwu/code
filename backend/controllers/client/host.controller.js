@@ -112,11 +112,11 @@ exports.initiateHostRequest = async (req, res) => {
       return res.status(200).json({ status: false, message: "Photo gallery is missing. Please upload the required photos." });
     }
 
-    if (!req.files.image) {
-      console.log("❌ [HOST REQUEST] Missing profile image");
-      if (req.files) deleteFiles(req.files);
-      return res.status(200).json({ status: false, message: "Image is missing. Please upload a valid image." });
-    }
+    // if (!req.files.image) {
+    //   console.log("❌ [HOST REQUEST] Missing profile image");
+    //   if (req.files) deleteFiles(req.files);
+    //   return res.status(200).json({ status: false, message: "Image is missing. Please upload a valid image." });
+    // }
 
     console.log("📁 [HOST REQUEST] File upload details:", {
       image: req.files.image ? {
