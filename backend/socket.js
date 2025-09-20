@@ -36,12 +36,15 @@ const agoraSettings = {
   maxFreeChatMessages: 10,
 };
 
+console.log("🔧 Agora Settings Initialized:", agoraSettings);
+
 io.on("connection", async (socket) => {
   console.log("✅ Socket Connection done Client ID: ", socket.id);
   
   // ADD THIS DEBUG LOG
   const { globalRoom } = socket.handshake.query;
   console.log("🔍 DEBUG: globalRoom received:", globalRoom);
+  console.log("🔍 DEBUG: Full handshake query:", socket.handshake.query);
   
   if (!globalRoom) {
     console.error("❌ No globalRoom provided in handshake");
@@ -49,34 +52,44 @@ io.on("connection", async (socket) => {
   }
 
   const id = globalRoom.split(":")[1];
+  console.log("🔍 DEBUG: Extracted ID from globalRoom:", id);
+  
   if (!id || !mongoose.Types.ObjectId.isValid(id)) {
-    console.warn("Invalid or missing ID from globalRoom:", globalRoom);
+    console.warn("❌ Invalid or missing ID from globalRoom:", globalRoom);
     return;
   }
 
-  console.log("Socket connected with:", id);
+  console.log("✅ Socket connected with valid ID:", id);
 
   if (globalRoom) {
     if (!socket.rooms.has(globalRoom)) {
       socket.join(globalRoom);
-      console.log(`Socket joined room: ${globalRoom}`);
+      console.log(`✅ Socket joined room: ${globalRoom}`);
     } else {
-      console.log(`Socket is already in room: ${globalRoom}`);
+      console.log(`⚠️ Socket is already in room: ${globalRoom}`);
     }
 
+    console.log("🔍 Searching for user with ID:", id);
     const user = await User.findById(id).select("_id isOnline").lean();
 
     if (user) {
+      console.log("👤 User found, updating online status:", user._id);
       await User.findByIdAndUpdate(user._id, { $set: { isOnline: true } }, { new: true });
+      console.log("✅ User online status updated");
     } else {
+      console.log("👤 User not found, searching for host with ID:", id);
       const host = await Host.findOne({ _id: id, status: 2 }).select("_id isOnline").lean();
 
       if (host) {
+        console.log("🎭 Host found, updating online status:", host._id);
         await Host.findByIdAndUpdate(host._id, { $set: { isOnline: true } }, { new: true });
+        console.log("✅ Host online status updated");
+      } else {
+        console.log("❌ Neither user nor host found with ID:", id);
       }
     }
   } else {
-    console.warn("Invalid globalRoom format:", globalRoom);
+    console.warn("❌ Invalid globalRoom format:", globalRoom);
   }
 
   //chat
@@ -88,17 +101,22 @@ socket.on("chatMessageSent", async (data) => {
   console.log("🔹 Message type:", parseData?.messageType);
   console.log("🔹 Sender role:", parseData?.senderRole);
   console.log("🔹 Receiver role:", parseData?.receiverRole);
+    
     let senderPromise, receiverPromise;
 
     if (parseData?.senderRole === "user") {
+      console.log("🔍 Looking up sender as user:", parseData?.senderId);
       senderPromise = User.findById(parseData?.senderId).lean().select("_id name image coin isVip");
     } else if (parseData?.senderRole === "host") {
+      console.log("🔍 Looking up sender as host:", parseData?.senderId);
       senderPromise = Host.findById(parseData?.senderId).lean().select("_id name image coin");
     }
 
     if (parseData?.receiverRole === "host") {
+      console.log("🔍 Looking up receiver as host:", parseData?.receiverId);
       receiverPromise = Host.findById(parseData?.receiverId).lean().select("_id name image fcmToken isBlock coin chatRate agencyId");
     } else if (parseData?.receiverRole === "user") {
+      console.log("🔍 Looking up receiver as user:", parseData?.receiverId);
       receiverPromise = User.findById(parseData?.receiverId).lean().select("_id name image fcmToken isBlock coin");
     }
 
@@ -106,12 +124,18 @@ socket.on("chatMessageSent", async (data) => {
 
     const [uniqueId, sender, receiver, chatTopic] = await Promise.all([generateHistoryUniqueId(), senderPromise, receiverPromise, chatTopicPromise]);
 
+    console.log("🔍 Query results - Sender:", sender ? "Found" : "Not found");
+    console.log("🔍 Query results - Receiver:", receiver ? "Found" : "Not found");
+    console.log("🔍 Query results - ChatTopic:", chatTopic ? "Found" : "Not found");
+
     if (!chatTopic) {
       console.log("❌ Chat topic not found");
       return;
     }
 
     if (parseData?.messageType == 1) {
+      console.log("💬 Processing text message");
+      
       if (parseData.senderRole === "user" && parseData.receiverRole === "host") {
         let maxFreeChatMessages = agoraSettings.maxFreeChatMessages;
 
@@ -119,14 +143,22 @@ socket.on("chatMessageSent", async (data) => {
 
         //Check if sender is VIP
         if (sender?.isVip) {
+          console.log("👑 Sender is VIP, checking for VIP privileges");
           const vipPrivilege = await VipPlanPrivilege.findOne().select("freeMessages").lean();
           if (vipPrivilege?.freeMessages) {
             maxFreeChatMessages = vipPrivilege.freeMessages;
+            console.log("👑 VIP free messages applied:", maxFreeChatMessages);
           }
         }
 
         const isWithinFreeLimit = chatTopic.messageCount < maxFreeChatMessages;
         const chatRate = receiver.chatRate || 10;
+
+        console.log("💰 Chat economics - Message count:", chatTopic.messageCount);
+        console.log("💰 Chat economics - Free limit:", maxFreeChatMessages);
+        console.log("💰 Chat economics - Within free limit:", isWithinFreeLimit);
+        console.log("💰 Chat economics - Chat rate:", chatRate);
+        console.log("💰 Chat economics - Sender coins:", sender?.coin);
 
         if (!isWithinFreeLimit && sender?.coin < chatRate) {
           console.log("❌ Insufficient coins, message not sent.");
@@ -135,6 +167,7 @@ socket.on("chatMessageSent", async (data) => {
         }
       }
 
+      console.log("💾 Creating new chat message");
       const chat = new Chat({
         messageType: parseData?.messageType,
         senderId: parseData?.senderId,
@@ -155,19 +188,27 @@ socket.on("chatMessageSent", async (data) => {
         ),
       ]);
 
+      console.log("✅ Chat message saved with ID:", chat._id);
+
       const eventData = {
         data,
         messageId: chat._id.toString(),
       };
 
+      console.log("📤 Emitting chat message to rooms");
       io.in("globalRoom:" + chatTopic?.senderId?.toString()).emit("chatMessageSent", eventData);
       io.in("globalRoom:" + chatTopic?.receiverId?.toString()).emit("chatMessageSent", eventData);
 
       if (parseData.senderRole === "user" && parseData.receiverRole === "host") {
-        const maxFreeChatMessages = settingJSON.maxFreeChatMessages || 10;
-        const adminCommissionRate = settingJSON.adminCommissionRate || 10;
+        console.log("💰 Processing coin deduction for user-to-host message");
+        
+        const maxFreeChatMessages = agoraSettings.maxFreeChatMessages;
+        const adminCommissionRate = agoraSettings.adminCommissionRate;
         const isWithinFreeLimit = chatTopic.messageCount < maxFreeChatMessages;
         const chatRate = receiver.chatRate || 10;
+
+        console.log("💰 Using hardcoded adminCommissionRate:", adminCommissionRate);
+        console.log("💰 Chat rate for deduction:", chatRate);
 
         let deductedCoins = 0;
         let adminShare = 0;
@@ -175,21 +216,30 @@ socket.on("chatMessageSent", async (data) => {
         let agencyShare = 0;
 
         if (!isWithinFreeLimit && sender.coin >= chatRate) {
+          console.log("💰 Proceeding with coin deduction");
+          
           deductedCoins = chatRate;
           adminShare = (chatRate * adminCommissionRate) / 100;
           hostEarnings = chatRate - adminShare;
 
+          console.log("💰 Calculated - Deducted:", deductedCoins, "Admin:", adminShare, "Host:", hostEarnings);
+
           let agencyUpdate = null;
           if (receiver.agencyId) {
+            console.log("🏢 Processing agency commission for:", receiver.agencyId);
             const agency = await Agency.findById(receiver.agencyId).lean().select("_id commissionType commission");
 
             if (agency) {
+              console.log("🏢 Agency found - Type:", agency.commissionType, "Commission:", agency.commission);
+              
               if (agency.commissionType === 1) {
                 // Percentage commission
                 agencyShare = (hostEarnings * agency.commission) / 100;
+                console.log("🏢 Agency percentage commission calculated:", agencyShare);
               } else {
                 // Fixed salary, ignore earnings share
                 agencyShare = 0;
+                console.log("🏢 Agency fixed salary, no commission share");
               }
 
               agencyUpdate = Agency.updateOne(
@@ -205,6 +255,7 @@ socket.on("chatMessageSent", async (data) => {
             }
           }
 
+          console.log("💾 Updating user and host coins, creating history");
           await Promise.all([
             User.updateOne(
               { _id: sender._id, coin: { $gte: deductedCoins } },
@@ -232,10 +283,14 @@ socket.on("chatMessageSent", async (data) => {
           ]);
 
           console.log(`💰 Coins Deducted: ${deductedCoins} | Admin: ${adminShare} | Host Earnings: ${hostEarnings}`);
+        } else {
+          console.log("💰 No coin deduction needed (within free limit or insufficient coins)");
         }
       }
 
       if (receiver && receiver.fcmToken) {
+        console.log("🔔 Checking if notification should be sent");
+        
         const isBlocked = await Block.findOne({
           $or: [
             { userId: sender._id, hostId: receiver._id },
@@ -244,6 +299,8 @@ socket.on("chatMessageSent", async (data) => {
         });
 
         if (!isBlocked) {
+          console.log("🔔 Sending FCM notification");
+          
           const payload = {
             token: receiver.fcmToken,
             notification: {
@@ -293,14 +350,18 @@ socket.on("chatMessageSent", async (data) => {
     let senderPromise, receiverPromise;
 
     if (parseData?.senderRole === "user") {
+      console.log("🔍 Looking up gift sender as user:", parseData?.senderId);
       senderPromise = User.findById(parseData?.senderId).lean().select("_id name coin");
     } else if (parseData?.senderRole === "host") {
+      console.log("🔍 Looking up gift sender as host:", parseData?.senderId);
       senderPromise = Host.findById(parseData?.senderId).lean().select("_id name coin");
     }
 
     if (parseData?.receiverRole === "host") {
+      console.log("🔍 Looking up gift receiver as host:", parseData?.receiverId);
       receiverPromise = Host.findById(parseData?.receiverId).lean().select("_id fcmToken isBlock coin agencyId");
     } else if (parseData?.receiverRole === "user") {
+      console.log("🔍 Looking up gift receiver as user:", parseData?.receiverId);
       receiverPromise = User.findById(parseData?.receiverId).lean().select("_id fcmToken isBlock coin");
     }
 
@@ -308,6 +369,11 @@ socket.on("chatMessageSent", async (data) => {
     const giftPromise = Gift.findById(parseData?.giftId).lean().select("_id coin image type");
 
     const [uniqueId, sender, receiver, chatTopic, gift] = await Promise.all([generateHistoryUniqueId(), senderPromise, receiverPromise, chatTopicPromise, giftPromise]);
+
+    console.log("🔍 Gift query results - Sender:", sender ? "Found" : "Not found");
+    console.log("🔍 Gift query results - Receiver:", receiver ? "Found" : "Not found");
+    console.log("🔍 Gift query results - ChatTopic:", chatTopic ? "Found" : "Not found");
+    console.log("🔍 Gift query results - Gift:", gift ? "Found" : "Not found");
 
     if (!chatTopic) {
       console.log("❌ Chat topic not found");
@@ -322,7 +388,13 @@ socket.on("chatMessageSent", async (data) => {
     const giftPrice = gift?.coin || 0;
     const giftCount = parseData?.giftCount || 1;
     const totalGiftCost = giftPrice * giftCount;
-    const adminCommissionRate = settingJSON.adminCommissionRate;
+    const adminCommissionRate = agoraSettings.adminCommissionRate;
+
+    console.log("🎁 Gift economics - Price per gift:", giftPrice);
+    console.log("🎁 Gift economics - Gift count:", giftCount);
+    console.log("🎁 Gift economics - Total cost:", totalGiftCost);
+    console.log("🎁 Gift economics - Sender coins:", sender?.coin);
+    console.log("🎁 Gift economics - Admin commission rate:", adminCommissionRate);
 
     if (sender?.coin < totalGiftCost) {
       console.log("❌ Insufficient coins, gift not sent.");
@@ -330,6 +402,7 @@ socket.on("chatMessageSent", async (data) => {
       return;
     }
 
+    console.log("💾 Creating gift chat message");
     const chat = new Chat({
       messageType: 4,
       message: `🎁 ${sender.name} sent a gift`,
@@ -351,11 +424,14 @@ socket.on("chatMessageSent", async (data) => {
       ),
     ]);
 
+    console.log("✅ Gift chat message saved");
+
     const eventData = {
       data,
       messageId: chat._id.toString(),
     };
 
+    console.log("📤 Emitting gift sent event");
     io.in("globalRoom:" + chatTopic?.senderId?.toString()).emit("chatGiftSent", eventData);
     io.in("globalRoom:" + chatTopic?.receiverId?.toString()).emit("chatGiftSent", eventData);
 
@@ -363,17 +439,23 @@ socket.on("chatMessageSent", async (data) => {
     let hostEarnings = totalGiftCost - adminShare;
     let agencyShare = 0;
 
+    console.log("💰 Gift earnings - Admin share:", adminShare);
+    console.log("💰 Gift earnings - Host earnings:", hostEarnings);
+
     let agencyUpdate = null;
     if (receiver.agencyId) {
+      console.log("🏢 Processing agency commission for gift");
       const agency = await Agency.findById(receiver.agencyId).lean().select("_id commissionType commission");
 
       if (agency) {
         if (agency.commissionType === 1) {
           // Percentage commission
           agencyShare = (hostEarnings * agency.commission) / 100;
+          console.log("🏢 Agency percentage commission for gift:", agencyShare);
         } else {
           // Fixed salary, ignore earnings share
           agencyShare = 0;
+          console.log("🏢 Agency fixed salary for gift, no commission");
         }
 
         agencyUpdate = Agency.updateOne(
@@ -389,6 +471,7 @@ socket.on("chatMessageSent", async (data) => {
       }
     }
 
+    console.log("💾 Processing gift payment transactions");
     await Promise.all([
       User.updateOne(
         { _id: sender._id, coin: { $gte: totalGiftCost } },
@@ -423,6 +506,8 @@ socket.on("chatMessageSent", async (data) => {
     console.log(`💰 Gift Sent | Cost: ${totalGiftCost} | Admin Share: ${adminShare} | Host Earnings: ${hostEarnings}`);
 
     if (receiver && !receiver.isBlock && receiver.fcmToken) {
+      console.log("🔔 Sending gift FCM notification");
+      
       const payload = {
         token: receiver.fcmToken,
         notification: {
@@ -465,9 +550,13 @@ socket.on("chatMessageSent", async (data) => {
   //private video call
   socket.on("callRinging", async (data) => {
     const parsedData = JSON.parse(data);
-    console.log("callRinging request received:", parsedData);
+    console.log("📞 callRinging request received:", parsedData);
 
     const { callerId, receiverId, agoraUID, channel, callType } = parsedData;
+
+    console.log("🔧 Using hardcoded Agora settings for token generation");
+    console.log("🔧 Agora App ID:", agoraSettings.agoraAppId);
+    console.log("🔧 Agora App Certificate:", agoraSettings.agoraAppCertificate ? "Present" : "Missing");
 
     const role = RtcRole.PUBLISHER;
     const uid = agoraUID ? agoraUID : 0;
@@ -477,10 +566,14 @@ socket.on("chatMessageSent", async (data) => {
 
     const [callUniqueId, token, caller, receiver] = await Promise.all([
       generateHistoryUniqueId(),
-      RtcTokenBuilder.buildTokenWithUid(settingJSON?.agoraAppId, settingJSON?.agoraAppCertificate, channel, uid, role, privilegeExpiredTs),
+      RtcTokenBuilder.buildTokenWithUid(agoraSettings.agoraAppId, agoraSettings.agoraAppCertificate, channel, uid, role, privilegeExpiredTs),
       User.findById(callerId).select("_id name image isBlock isBusy callId isOnline uniqueId").lean(),
       Host.findById(receiverId).select("_id name image isBlock isBusy callId isOnline uniqueId").lean(),
     ]);
+
+    console.log("🔍 Call participants - Caller:", caller ? caller.name : "Not found");
+    console.log("🔍 Call participants - Receiver:", receiver ? receiver.name : "Not found");
+    console.log("🎫 Generated token:", token ? "Success" : "Failed");
 
     if (!caller) {
       io.in("globalRoom:" + callerId.toString()).emit("callRinging", { message: "Caller does not found." });
@@ -533,7 +626,7 @@ socket.on("chatMessageSent", async (data) => {
     }
 
     if (!receiver.isBusy && receiver.callId === null) {
-      console.log("Receiver and Caller are free. Proceeding with call setup.");
+      console.log("✅ Receiver and Caller are free. Proceeding with call setup.");
 
       const callHistory = new History();
       callHistory.uniqueId = callUniqueId;
@@ -1038,7 +1131,6 @@ socket.on("chatMessageSent", async (data) => {
     }
 
     chat.chatTopicId = chatTopic._id;
-    chat.callId = callHistory?._id;
     chat.senderId = callHistory?.userId;
     chat.messageType = callType.trim().toLowerCase() === "audio" ? 5 : 6;
     chat.message = callType.trim().toLowerCase() === "audio" ? "📞 Audio Call" : "📽 Video Call";
@@ -1146,51 +1238,70 @@ socket.on("chatMessageSent", async (data) => {
   socket.on("callCoinCharged", async (data) => {
     try {
       const parsedData = JSON.parse(data);
-      console.log("[callCoinCharged] Parsed Data:", parsedData);
+      console.log("💰 [callCoinCharged] Parsed Data:", parsedData);
 
       const { callerId, receiverId, callId, callMode, gender } = parsedData;
 
       const [caller, receiver, callHistory, vipPrivilege] = await Promise.all([
-        User.findById(callerId).select("_id coin").lean(),
+        User.findById(callerId).select("_id coin isVip").lean(),
         Host.findById(receiverId).select("_id coin privateCallRate audioCallRate randomCallFemaleRate randomCallMaleRate agencyId").lean(),
-        History.findById(callId).select("_id callType isPrivate").lean(),
-        VipPlanPrivilege.findOne().select("audioCallDiscount privateCallDiscount").lean(),
+        History.findById(callId).select("_id callType isPrivate isRandom").lean(),
+        VipPlanPrivilege.findOne().select("audioCallDiscount privateCallDiscount randomMatchCallDiscount").lean(),
       ]);
 
+      console.log("🔍 Call coin charge participants found:", {
+        caller: caller ? "Yes" : "No",
+        receiver: receiver ? "Yes" : "No", 
+        callHistory: callHistory ? "Yes" : "No"
+      });
+
       if (!caller || !receiver || !callHistory) {
-        console.log("[callCoinCharged] Caller, Receiver, or CallHistory not found!");
+        console.log("❌ [callCoinCharged] Caller, Receiver, or CallHistory not found!");
         return;
       }
 
+      console.log("💰 Using hardcoded adminCommissionRate:", agoraSettings.adminCommissionRate);
+
       if (callMode === "private" && callHistory.callType === "audio") {
-        const adminCommissionRate = settingJSON?.adminCommissionRate;
+        console.log("🎵 Processing audio call charges");
+        
+        const adminCommissionRate = agoraSettings.adminCommissionRate;
         let audioCallCharge = Math.abs(receiver.audioCallRate);
         let audioCallDiscount = 0;
 
+        console.log("🎵 Base audio call charge:", audioCallCharge);
+
         // Check if user is VIP and apply discount
-        if (caller.isVip && caller.vipPrivilege) {
+        if (caller.isVip && vipPrivilege) {
+          console.log("👑 Applying VIP discount for audio call");
           audioCallDiscount = Math.min(Math.max(vipPrivilege.audioCallDiscount || 0, 0), 100);
 
           const discountAmount = Math.floor((audioCallCharge * audioCallDiscount) / 100);
           audioCallCharge = audioCallCharge - discountAmount;
+          console.log("👑 VIP discount applied - Original:", receiver.audioCallRate, "Discounted:", audioCallCharge);
         }
 
         const adminShare = Math.floor((audioCallCharge * adminCommissionRate) / 100);
         const hostEarnings = audioCallCharge - adminShare;
         let agencyShare = 0;
 
+        console.log("💰 Audio call economics - Charge:", audioCallCharge, "Admin:", adminShare, "Host:", hostEarnings);
+
         if (caller.coin >= audioCallCharge) {
           let agencyUpdate = null;
           if (receiver.agencyId) {
+            console.log("🏢 Processing agency commission for audio call");
             const agency = await Agency.findById(receiver.agencyId).lean().select("_id commissionType commission");
 
             if (agency) {
               if (agency.commissionType === 1) {
                 // Percentage commission
                 agencyShare = (hostEarnings * agency.commission) / 100;
+                console.log("🏢 Agency percentage commission for audio call:", agencyShare);
               } else {
                 // Fixed salary, ignore earnings share
                 agencyShare = 0;
+                console.log("🏢 Agency fixed salary for audio call, no commission");
               }
 
               agencyUpdate = Agency.updateOne(
@@ -1206,8 +1317,7 @@ socket.on("chatMessageSent", async (data) => {
             }
           }
 
-          console.log(`[callCoinCharged] Deducting ${audioCallCharge} coins from Caller: ${caller._id}, Admin Share: ${adminShare}, Host Earnings: ${hostEarnings}`);
-
+          console.log("💾 Updating user and host coins, creating history for audio call");
           await Promise.all([
             User.updateOne(
               { _id: caller._id, coin: { $gte: audioCallCharge } },
@@ -1237,7 +1347,7 @@ socket.on("chatMessageSent", async (data) => {
             agencyUpdate,
           ]);
 
-          console.log("[callCoinCharged] Coin deduction and history update successful.");
+          console.log("[callCoinCharged] Coin deduction and history update successful for audio call.");
         } else {
           console.log(`[callCoinCharged] Insufficient Coins for Caller: ${caller._id}`);
           io.in("globalRoom:" + caller._id.toString()).emit("insufficientCoins", "You don't have sufficient coins.");
@@ -1245,34 +1355,45 @@ socket.on("chatMessageSent", async (data) => {
       }
 
       if (callMode === "private" && callHistory.callType === "video" && callHistory.isPrivate) {
-        const adminCommissionRate = settingJSON?.adminCommissionRate;
+        console.log("📹 Processing private video call charges");
+        
+        const adminCommissionRate = agoraSettings.adminCommissionRate;
         let privateCallCharge = Math.abs(receiver.privateCallRate);
         let privateCallDiscount = 0;
 
+        console.log("📹 Base private call charge:", privateCallCharge);
+
         // Check if user is VIP and apply discount
         if (caller.isVip && vipPrivilege) {
+          console.log("👑 Applying VIP discount for private call");
           privateCallDiscount = Math.min(Math.max(vipPrivilege.privateCallDiscount || 0, 0), 100);
 
           const discountAmount = Math.floor((privateCallCharge * privateCallDiscount) / 100);
           privateCallCharge = privateCallCharge - discountAmount;
+          console.log("👑 VIP discount applied - Original:", receiver.privateCallRate, "Discounted:", privateCallCharge);
         }
 
         const adminShare = Math.floor((privateCallCharge * adminCommissionRate) / 100);
         const hostEarnings = privateCallCharge - adminShare;
         let agencyShare = 0;
 
+        console.log("💰 Private call economics - Charge:", privateCallCharge, "Admin:", adminShare, "Host:", hostEarnings);
+
         if (caller.coin >= privateCallCharge) {
           let agencyUpdate = null;
           if (receiver.agencyId) {
+            console.log("🏢 Processing agency commission for private call");
             const agency = await Agency.findById(receiver.agencyId).lean().select("_id commissionType commission");
 
             if (agency) {
               if (agency.commissionType === 1) {
                 // Percentage commission
                 agencyShare = (hostEarnings * agency.commission) / 100;
+                console.log("🏢 Agency percentage commission for private call:", agencyShare);
               } else {
                 // Fixed salary, ignore earnings share
                 agencyShare = 0;
+                console.log("🏢 Agency fixed salary for private call, no commission");
               }
 
               agencyUpdate = Agency.updateOne(
@@ -1288,8 +1409,7 @@ socket.on("chatMessageSent", async (data) => {
             }
           }
 
-          console.log(`[callCoinCharged] Deducting ${privateCallCharge} coins from Caller: ${caller._id}, Admin Share: ${adminShare}, Host Earnings: ${hostEarnings}`);
-
+          console.log("💾 Updating user and host coins, creating history for private call");
           await Promise.all([
             User.updateOne(
               { _id: caller._id, coin: { $gte: privateCallCharge } },
@@ -1319,7 +1439,7 @@ socket.on("chatMessageSent", async (data) => {
             agencyUpdate,
           ]);
 
-          console.log("[callCoinCharged] Coin deduction and history update successful.");
+          console.log("[callCoinCharged] Coin deduction and history update successful for private call.");
         } else {
           console.log(`[callCoinCharged] Insufficient Coins for Caller: ${caller._id}`);
           io.in("globalRoom:" + caller._id.toString()).emit("insufficientCoins", "You don't have sufficient coins.");
@@ -1327,44 +1447,56 @@ socket.on("chatMessageSent", async (data) => {
       }
 
       if (callMode === "random" && callHistory.callType === "video" && callHistory.isRandom) {
+        console.log("🎲 Processing random video call charges");
+        
         const genderQuery = gender?.toLowerCase();
+        console.log("🎲 Gender preference:", genderQuery);
 
         let randomCallCharge;
         if (genderQuery === "female") {
           randomCallCharge = Math.abs(receiver.randomCallFemaleRate);
+          console.log("🎲 Using female rate:", randomCallCharge);
         } else if (genderQuery === "male") {
           randomCallCharge = Math.abs(receiver.randomCallMaleRate);
+          console.log("🎲 Using male rate:", randomCallCharge);
         } else {
           randomCallCharge = Math.abs(receiver.randomCallRate) || 100;
+          console.log("🎲 Using default rate:", randomCallCharge);
         }
 
         // Check if user is VIP and apply discount
         let randomCallDiscount = 0;
         if (caller.isVip && vipPrivilege) {
+          console.log("👑 Applying VIP discount for random call");
           randomCallDiscount = Math.min(Math.max(vipPrivilege.randomMatchCallDiscount || 0, 0), 100);
 
           const discountAmount = Math.floor((randomCallCharge * randomCallDiscount) / 100);
           randomCallCharge = randomCallCharge - discountAmount;
+          console.log("👑 VIP discount applied - Original rate, Discounted:", randomCallCharge);
         }
 
-        const adminCommissionRate = settingJSON?.adminCommissionRate;
-
+        const adminCommissionRate = agoraSettings.adminCommissionRate;
         const adminShare = Math.floor((randomCallCharge * adminCommissionRate) / 100);
         const hostEarnings = randomCallCharge - adminShare;
         let agencyShare = 0;
 
+        console.log("💰 Random call economics - Charge:", randomCallCharge, "Admin:", adminShare, "Host:", hostEarnings);
+
         if (caller.coin >= randomCallCharge) {
           let agencyUpdate = null;
           if (receiver.agencyId) {
+            console.log("🏢 Processing agency commission for random call");
             const agency = await Agency.findById(receiver.agencyId).lean().select("_id commissionType commission");
 
             if (agency) {
               if (agency.commissionType === 1) {
                 // Percentage commission
                 agencyShare = (hostEarnings * agency.commission) / 100;
+                console.log("🏢 Agency percentage commission for random call:", agencyShare);
               } else {
                 // Fixed salary, ignore earnings share
                 agencyShare = 0;
+                console.log("🏢 Agency fixed salary for random call, no commission");
               }
 
               agencyUpdate = Agency.updateOne(
@@ -1380,8 +1512,7 @@ socket.on("chatMessageSent", async (data) => {
             }
           }
 
-          console.log(`[callCoinCharged] Deducting ${randomCallCharge} coins from Caller: ${caller._id}, Admin Share: ${adminShare}, Host Earnings: ${hostEarnings}`);
-
+          console.log("💾 Updating user and host coins, creating history for random call");
           await Promise.all([
             User.updateOne(
               { _id: caller._id, coin: { $gte: randomCallCharge } },
@@ -1411,14 +1542,14 @@ socket.on("chatMessageSent", async (data) => {
             agencyUpdate,
           ]);
 
-          console.log("[callCoinCharged] Coin deduction and history update successful.");
+          console.log("[callCoinCharged] Coin deduction and history update successful for random call.");
         } else {
           console.log(`[callCoinCharged] Insufficient Coins for Caller: ${caller._id}`);
           io.in("globalRoom:" + caller._id.toString()).emit("insufficientCoins", "You don't have sufficient coins.");
         }
       }
     } catch (error) {
-      console.error("[callCoinCharged] Error:", error);
+      console.error("❌ [callCoinCharged] Error:", error);
     }
   });
 
@@ -1426,7 +1557,10 @@ socket.on("chatMessageSent", async (data) => {
   socket.on("ringingStarted", async (data) => {
     const parsedData = JSON.parse(data);
     const { callerId, receiverId, agoraUID, channel, gender } = parsedData;
-    console.log("ringingStarted request received:", parsedData);
+    console.log("🎲 ringingStarted request received:", parsedData);
+
+    console.log("🔧 Using hardcoded Agora settings for random call token");
+    console.log("🔧 Agora App ID:", agoraSettings.agoraAppId);
 
     const role = RtcRole.PUBLISHER;
     const uid = agoraUID ? agoraUID : 0;
@@ -1436,10 +1570,14 @@ socket.on("chatMessageSent", async (data) => {
 
     const [callUniqueId, token, caller, receiver] = await Promise.all([
       generateHistoryUniqueId(),
-      RtcTokenBuilder.buildTokenWithUid(settingJSON?.agoraAppId, settingJSON?.agoraAppCertificate, channel, uid, role, privilegeExpiredTs),
+      RtcTokenBuilder.buildTokenWithUid(agoraSettings.agoraAppId, agoraSettings.agoraAppCertificate, channel, uid, role, privilegeExpiredTs),
       User.findById(callerId).select("_id name image isBlock isBusy callId isOnline uniqueId").lean(),
       Host.findById(receiverId).select("_id name image isBlock isBusy callId isOnline uniqueId").lean(),
     ]);
+
+    console.log("🔍 Random call participants - Caller:", caller ? caller.name : "Not found");
+    console.log("🔍 Random call participants - Receiver:", receiver ? receiver.name : "Not found");
+    console.log("🎫 Random call token generated:", token ? "Success" : "Failed");
 
     if (!caller) {
       io.in("globalRoom:" + caller._id.toString()).emit("ringingStarted", { message: "Caller does not found." });
@@ -1492,7 +1630,7 @@ socket.on("chatMessageSent", async (data) => {
     }
 
     if (!receiver.isBusy && receiver.callId === null) {
-      console.log("Receiver and Caller are free. Proceeding with call setup.");
+      console.log("✅ Receiver and Caller are free. Proceeding with call setup.");
 
       const callHistory = new History();
       callHistory.uniqueId = callUniqueId;
@@ -1792,7 +1930,7 @@ socket.on("chatMessageSent", async (data) => {
 
   socket.on("liveGiftSent", async (data) => {
     const giftData = JSON.parse(data);
-    console.log("Gift Data Received:", giftData);
+    console.log("🎁 Live Gift Data Received:", giftData);
 
     if (!socket.rooms.has(giftData.liveHistoryId)) {
       socket.join(giftData.liveHistoryId.toString());
@@ -1839,10 +1977,14 @@ socket.on("chatMessageSent", async (data) => {
 
       io.in(giftData.liveHistoryId).emit("liveGiftReceived", giftData);
 
-      const adminCommissionRate = settingJSON.adminCommissionRate;
+      console.log("💰 Using hardcoded admin commission rate for live gifts:", agoraSettings.adminCommissionRate);
+      
+      const adminCommissionRate = agoraSettings.adminCommissionRate;
       let adminShare = (totalCoin * adminCommissionRate) / 100;
       let hostEarnings = totalCoin - adminShare;
       let agencyShare = 0;
+
+      console.log("🎁 Live gift economics - Total:", totalCoin, "Admin:", adminShare, "Host:", hostEarnings);
 
       let agencyUpdate = null;
       if (receiver.agencyId) {
@@ -1852,9 +1994,11 @@ socket.on("chatMessageSent", async (data) => {
           if (agency.commissionType === 1) {
             // Percentage commission
             agencyShare = (hostEarnings * agency.commission) / 100;
+            console.log("🏢 Agency percentage commission for live gift:", agencyShare);
           } else {
             // Fixed salary, ignore earnings share
             agencyShare = 0;
+            console.log("🏢 Agency fixed salary for live gift, no commission");
           }
 
           agencyUpdate = Agency.updateOne(
@@ -1911,7 +2055,7 @@ socket.on("chatMessageSent", async (data) => {
         ),
       ]);
     } catch (error) {
-      console.error("Error in liveGiftSent:", error);
+      console.error("❌ Error in liveGiftSent:", error);
       io.in(giftData.liveHistoryId).emit("liveGiftReceived", { error: "An error occurred while processing the gift." });
       return;
     }
@@ -1980,7 +2124,8 @@ socket.on("chatMessageSent", async (data) => {
   });
 
   socket.on("disconnect", async (reason) => {
-    console.log(`Socket disconnected: ${id} - ${socket.id} - Reason: ${reason}`);
+    console.log(`🔌 Socket disconnected: ${id} - ${socket.id} - Reason: ${reason}`);
+    console.log("🔍 Processing disconnect cleanup for user/host:", id);
 
     if (globalRoom) {
       const sockets = await io.in(globalRoom).fetchSockets();
@@ -1988,14 +2133,14 @@ socket.on("chatMessageSent", async (data) => {
 
       if (sockets?.length == 0) {
         const personId = new mongoose.Types.ObjectId(id);
-        console.log(`🔍 Fetching data for Id: ${personId}`);
+        console.log(`🔍 Fetching data for disconnected user Id: ${personId}`);
 
         const host = await Host.findById(personId).select("_id callId isLive liveHistoryId").lean();
         if (host) {
+          console.log("🎭 Host disconnect cleanup starting");
+          
           if (host.callId && host.callId !== null) {
-            const callId = new mongoose.Types.ObjectId(host.callId);
-            console.log(`📞 Host was in an active call. Ending Call ID: ${callId}`);
-
+            console.log(`📞 Host was in active call ${host.callId}, cleaning up`);
             io.socketsLeave(host.callId.toString());
 
             const [callHistory] = await Promise.all([
@@ -2031,10 +2176,8 @@ socket.on("chatMessageSent", async (data) => {
           }
 
           if (host.isLive && host.liveHistoryId) {
-            const liveHistoryId = new mongoose.Types.ObjectId(host.liveHistoryId);
-            console.log(`📴 Live session ended for host. Live History ID: ${liveHistoryId}`);
-
-            const liveHistory = await LiveBroadcastHistory.findById(liveHistoryId).select("startTime").lean();
+            console.log(`📺 Host was live streaming ${host.liveHistoryId}, ending stream`);
+            const liveHistory = await LiveBroadcastHistory.findById(host.liveHistoryId).select("startTime").lean();
 
             const endTime = moment().tz("Asia/Kolkata").format();
             const start = moment.tz(liveHistory.startTime, "Asia/Kolkata");
@@ -2044,8 +2187,8 @@ socket.on("chatMessageSent", async (data) => {
             await Promise.all([
               LiveBroadcastHistory.updateOne({ _id: liveHistory._id }, { $set: { endTime, duration } }),
               Host.updateOne({ _id: host._id }, { $set: { isLive: false, isBusy: false, liveHistoryId: null } }),
-              LiveBroadcastView.deleteMany({ liveHistoryId }),
-              LiveBroadcaster.deleteOne({ hostId: personId, liveHistoryId }),
+              LiveBroadcastView.deleteMany({ liveHistoryId: host.liveHistoryId }),
+              LiveBroadcaster.deleteOne({ hostId: personId, liveHistoryId: host.liveHistoryId }),
             ]);
 
             console.log(`✅ Host is no longer live.`);
@@ -2069,10 +2212,10 @@ socket.on("chatMessageSent", async (data) => {
           const user = await User.findById(personId).select("_id callId").lean();
 
           if (user) {
+            console.log("👤 User disconnect cleanup starting");
+            
             if (user.callId && user.callId !== null) {
-              const callId = new mongoose.Types.ObjectId(user.callId);
-              console.log(`📞 User was in an active call. Ending Call ID: ${callId}`);
-
+              console.log(`📞 User was in active call ${user.callId}, cleaning up`);
               io.socketsLeave(user.callId.toString());
 
               const [callHistory] = await Promise.all([
